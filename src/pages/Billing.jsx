@@ -6,11 +6,12 @@ import toast from 'react-hot-toast';
 import { useApp } from '../context/AppContext';
 import {
     Plus, Search, Eye, Trash2, Edit3, Printer,
-    Download, X, Package, CheckCircle,
+    Download, X, Package, CheckCircle, DollarSign,
     FileText, Clock, AlertCircle, MessageCircle,
     Mail,
 } from 'lucide-react';
 import InvoicePreviewModal from '../components/InvoicePreviewModal';
+import PaymentModal from '../components/PaymentModal';
 
 const STATUS_CFG = {
     paid: { cls: 'badge-success', label: 'Paid', icon: CheckCircle },
@@ -30,6 +31,7 @@ function InvoiceFormModal({ invoice, onClose, onSave }) {
         notes: '',
         taxEnabled: true,
         paid: 0,
+        payments: [],
         status: 'unpaid',
     });
     const [searchProduct, setSearchProduct] = useState('');
@@ -85,7 +87,7 @@ function InvoiceFormModal({ invoice, onClose, onSave }) {
     );
 
     const handleSave = () => {
-        if (!form.customer) { toast.error('Please select a customer'); return; }
+        if (!form.customerId || !form.customer) { toast.error('Please select a customer'); return; }
         if (form.items.length === 0) { toast.error('Please add at least one product'); return; }
         const paidAmt = parseFloat(form.paid) || 0;
         const status = paidAmt >= total ? 'paid' : paidAmt > 0 ? 'partial' : 'unpaid';
@@ -112,8 +114,8 @@ function InvoiceFormModal({ invoice, onClose, onSave }) {
                         <div className="form-group">
                             <label className="form-label">Customer</label>
                             <select className="form-select" value={form.customerId} onChange={e => {
-                                const c = customers.find(x => x.id === parseInt(e.target.value));
-                                update('customerId', parseInt(e.target.value));
+                                const c = customers.find(x => x.id === e.target.value);
+                                update('customerId', e.target.value);
                                 update('customer', c ? c.name : '');
                             }}>
                                 <option value="">-- Select Customer --</option>
@@ -309,12 +311,13 @@ export default function Billing() {
     const [showForm, setShowForm] = useState(false);
     const [editInvoice, setEditInvoice] = useState(null);
     const [previewInvoice, setPreviewInvoice] = useState(null);
+    const [paymentInvoice, setPaymentInvoice] = useState(null);
     const [search, setSearch] = useState('');
     const [filterStatus, setFilterStatus] = useState('all');
 
     const filtered = invoices.filter(inv => {
-        const matchSearch = inv.customer.toLowerCase().includes(search.toLowerCase()) ||
-            inv.invoiceNo.toLowerCase().includes(search.toLowerCase());
+        const matchSearch = (inv.customer || '').toLowerCase().includes(search.toLowerCase()) ||
+            (inv.invoiceNo || '').toLowerCase().includes(search.toLowerCase());
         const matchStatus = filterStatus === 'all' || inv.status === filterStatus;
         return matchSearch && matchStatus;
     }).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -409,8 +412,8 @@ export default function Billing() {
                                                 {inv.taxEnabled && <span style={{ marginLeft: 6, fontSize: '0.65rem', background: '#dbeafe', color: '#1d4ed8', padding: '1px 6px', borderRadius: 99, fontWeight: 700 }}>{business.taxLabel || 'VAT'}</span>}
                                             </td>
                                             <td style={{ color: '#6b7280', fontSize: '0.82rem' }}>{inv.date}</td>
-                                            <td style={{ fontWeight: 600, color: '#1f2937' }}>{inv.customer}</td>
-                                            <td style={{ color: '#6b7280', fontSize: '0.82rem' }}>{inv.items.length} item{inv.items.length !== 1 ? 's' : ''}</td>
+                                            <td style={{ fontWeight: 600, color: '#1f2937' }}>{inv.customer || 'Unknown'}</td>
+                                            <td style={{ color: '#6b7280', fontSize: '0.82rem' }}>{inv.items?.length || 0} item{inv.items?.length !== 1 ? 's' : ''}</td>
                                             <td style={{ fontWeight: 700 }}>{currency(inv.total)}</td>
                                             <td style={{ fontWeight: 600, color: '#16a34a' }}>{currency(inv.paid)}</td>
                                             <td style={{ fontWeight: 600, color: balance > 0 ? '#dc2626' : '#16a34a' }}>
@@ -419,6 +422,9 @@ export default function Billing() {
                                             <td><span className={`badge ${cfg.cls}`}>{cfg.label}</span></td>
                                             <td>
                                                 <div style={{ display: 'flex', gap: 4 }}>
+                                                    <button className="btn btn-icon" style={{ width: 32, height: 32, background: '#f0fdf4', color: '#16a34a', border: 'none' }} onClick={() => setPaymentInvoice(inv)} title="Manage Payments">
+                                                        <DollarSign size={14} />
+                                                    </button>
                                                     <button className="btn btn-icon btn-ghost" style={{ width: 32, height: 32 }} onClick={() => setPreviewInvoice(inv)} title="View">
                                                         <Eye size={14} />
                                                     </button>
@@ -453,6 +459,16 @@ export default function Billing() {
                     invoice={previewInvoice}
                     business={business}
                     onClose={() => setPreviewInvoice(null)}
+                />
+            )}
+            {paymentInvoice && (
+                <PaymentModal
+                    invoice={paymentInvoice}
+                    onClose={() => setPaymentInvoice(null)}
+                    onSave={(updatedInvoice) => {
+                        updateInvoice(updatedInvoice.id, updatedInvoice);
+                        setPaymentInvoice(null);
+                    }}
                 />
             )}
         </div>

@@ -27,7 +27,7 @@ function ProductModal({ product, onClose, onSave }) {
     const [form, setForm] = useState(product || {
         name: '', sku: '', category: 'Food & Grocery', unit: 'PCS',
         salePrice: '', purchasePrice: '', stock: '', minStock: 10,
-        gstRate: 5, barcode: '',
+        taxRate: 5, barcode: '',
     });
     const update = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -90,8 +90,8 @@ function ProductModal({ product, onClose, onSave }) {
                                 <input className="form-control" type="number" min="0" step="0.01" value={form.purchasePrice} onChange={e => update('purchasePrice', e.target.value)} placeholder="0.00" />
                             </div>
                             <div className="form-group">
-                                <label className="form-label">GST Rate</label>
-                                <select className="form-select" value={form.gstRate} onChange={e => update('gstRate', parseInt(e.target.value))}>
+                                <label className="form-label">Tax Rate</label>
+                                <select className="form-select" value={form.taxRate} onChange={e => update('taxRate', parseInt(e.target.value))}>
                                     {GST_RATES.map(r => <option key={r} value={r}>{r}%</option>)}
                                 </select>
                             </div>
@@ -325,7 +325,7 @@ export default function Inventory() {
                                     <th>Sale Price</th>
                                     <th>Purchase Price</th>
                                     <th>Stock</th>
-                                    <th>GST</th>
+                                    <th>Tax %</th>
                                     <th>Status</th>
                                     <th>Actions</th>
                                 </tr>
@@ -377,7 +377,7 @@ export default function Inventory() {
                                                 </div>
                                             </td>
                                             <td>
-                                                <span className="badge badge-primary">{p.gstRate}%</span>
+                                                <span className="badge badge-primary">{p.taxRate ?? 0}%</span>
                                             </td>
                                             <td>
                                                 {isOut ? <span className="badge badge-danger">Out of Stock</span> :

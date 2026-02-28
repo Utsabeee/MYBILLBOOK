@@ -313,7 +313,7 @@ export default function Dashboard({ onNavigate }) {
                                         <FileText size={16} color="#3b82f6" />
                                     </div>
                                     <div style={{ flex: 1, overflow: 'hidden' }}>
-                                        <div style={{ fontWeight: 600, fontSize: '0.84rem', color: '#1f2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inv.customer}</div>
+                                        <div style={{ fontWeight: 600, fontSize: '0.84rem', color: '#1f2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inv.customer || 'Unknown'}</div>
                                         <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{inv.invoiceNo} · {inv.date}</div>
                                     </div>
                                     <div style={{ textAlign: 'right' }}>

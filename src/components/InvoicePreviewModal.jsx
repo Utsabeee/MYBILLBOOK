@@ -71,7 +71,7 @@ export default function InvoicePreviewModal({ invoice, onClose, business }) {
                                 <div style={{ fontSize: '0.82rem', color: '#6b7280' }}><b>Date:</b> {invoice.date}</div>
                                 <div style={{ marginTop: 8, padding: '8px 12px', background: '#f8fafc', borderRadius: 8, textAlign: 'left', border: '1px solid #e2e8f0' }}>
                                     <div style={{ fontSize: '0.72rem', color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' }}>Bill To</div>
-                                    <div style={{ fontWeight: 700, color: '#1f2937', marginTop: 2 }}>{invoice.customer}</div>
+                                    <div style={{ fontWeight: 700, color: '#1f2937', marginTop: 2 }}>{invoice.customer || 'Unknown Customer'}</div>
                                 </div>
                             </div>
                         </div>
@@ -86,7 +86,7 @@ export default function InvoicePreviewModal({ invoice, onClose, business }) {
                                 </tr>
                             </thead>
                             <tbody>
-                                {invoice.items.map((item, i) => (
+                                {(invoice.items || []).map((item, i) => (
                                     <tr key={i}>
                                         <td style={{ padding: '10px 12px', color: '#9ca3af', fontSize: '0.82rem' }}>{i + 1}</td>
                                         <td style={{ padding: '10px 12px', fontWeight: 600, color: '#1f2937' }}>{item.name}</td>

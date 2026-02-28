@@ -12,10 +12,11 @@ import toast from 'react-hot-toast';
 import InvoicePreviewModal from '../components/InvoicePreviewModal';
 
 // ── Contact Form Modal ──
-function ContactModal({ contact, onClose, onSave }) {
+function ContactModal({ contact, onClose, onSave, defaultType = 'customer' }) {
+    const { business } = useApp();
     const [form, setForm] = useState(contact || {
         name: '', phone: '', email: '', gst: '',
-        address: '', type: 'customer',
+        address: '', type: defaultType,
     });
     const update = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -372,6 +373,7 @@ export default function Customers() {
             {showForm && (
                 <ContactModal
                     contact={editContact}
+                    defaultType={tab}
                     onClose={() => { setShowForm(false); setEditContact(null); }}
                     onSave={(data) => { if (editContact) updateCustomer(editContact.id, data); else addCustomer(data); }}
                 />
