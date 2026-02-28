@@ -80,6 +80,7 @@ export function AppProvider({ children }) {
     const [customers, setCustomers] = useState(() => LS.get('mbb_customers', DEFAULT_CUSTOMERS));
     const [invoices, setInvoices] = useState(() => LS.get('mbb_invoices', DEFAULT_INVOICES));
     const [nextInvoiceNo, setNextInvoiceNo] = useState(() => LS.get('mbb_nextInv', 1));
+    const [payments, setPayments] = useState(() => LS.get('mbb_payments', []));
 
     // UI state
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -123,6 +124,27 @@ export function AppProvider({ children }) {
             setCustomers(snap.empty ? [] : snap.docs.map(d => ({ id: d.id, ...d.data() })));
         });
 
+        const unsubPayments = onSnapshot(query(collection(db, 'payments'), where('businessId', '==', uid)), (snap) => {
+            const fetchedPayments = snap.empty ? [] : snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setPayments(fetchedPayments);
+            
+            // Update invoices with correct paid/status based on payments
+            setInvoices(prevInvoices => {
+                return prevInvoices.map(invoice => {
+                    const invoicePayments = fetchedPayments.filter(p => p.invoiceId === invoice.id);
+                    const totalPaid = invoicePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+                    const invoiceTotal = invoice.total || 0;
+                    const newStatus = totalPaid >= invoiceTotal ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
+                    
+                    return {
+                        ...invoice,
+                        paid: totalPaid,
+                        status: newStatus,
+                    };
+                });
+            });
+        });
+
         const unsubInvoices = onSnapshot(query(collection(db, 'invoices'), where('businessId', '==', uid)), (snap) => {
             if (snap.empty) {
                 setInvoices([]);
@@ -141,7 +163,7 @@ export function AppProvider({ children }) {
         });
 
         return () => {
-            unsubBusiness(); unsubProducts(); unsubCustomers(); unsubInvoices();
+            unsubBusiness(); unsubProducts(); unsubCustomers(); unsubInvoices(); unsubPayments();
         };
     }, [user]);
 
@@ -152,6 +174,7 @@ export function AppProvider({ children }) {
     useEffect(() => { if (!user) LS.set('mbb_customers', customers); }, [customers, user]);
     useEffect(() => { if (!user) LS.set('mbb_invoices', invoices); }, [invoices, user]);
     useEffect(() => { if (!user) LS.set('mbb_nextInv', nextInvoiceNo); }, [nextInvoiceNo, user]);
+    useEffect(() => { if (!user) LS.set('mbb_payments', payments); }, [payments, user]);
 
     // ── Auth ─────────────────────────────────────────
     const login = () => setIsAuthenticated(true);
@@ -234,6 +257,69 @@ export function AppProvider({ children }) {
         else setInvoices(prev => prev.filter(i => i.id !== id));
     };
 
+    // ── Payment CRUD ─────────────────────────────────
+    const addPayment = async (paymentData) => {
+        const id = Date.now().toString();
+        const paymentObj = {
+            ...paymentData,
+            id,
+            businessId: user?.uid || 'local',
+            createdAt: new Date().toISOString(),
+        };
+        
+        if (user && db) {
+            // Just add the payment - Firebase listener will update invoice status
+            await setDoc(doc(db, 'payments', id), paymentObj);
+        } else {
+            // For local users, add payment and update invoice
+            setPayments(prev => [...prev, paymentObj]);
+            const invoice = invoices.find(i => i.id === paymentData.invoiceId);
+            if (invoice) {
+                const totalPaid = paymentObj.amount + (invoice.paid || 0);
+                const newStatus = totalPaid >= invoice.total ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
+                setInvoices(prev => prev.map(i => i.id === paymentData.invoiceId ? { ...i, paid: totalPaid, status: newStatus } : i));
+            }
+        }
+        return id;
+    };
+    
+    const updatePayment = async (id, u) => {
+        if (user && db) await updateDoc(doc(db, 'payments', id.toString()), u);
+        else setPayments(prev => prev.map(p => p.id === id ? { ...p, ...u } : p));
+    };
+    
+    const deletePayment = async (id) => {
+        const payment = payments.find(p => p.id === id);
+        if (payment) {
+            if (user && db) {
+                // Just delete the payment - Firebase listener will update invoice status
+                await deleteDoc(doc(db, 'payments', id.toString()));
+            } else {
+                // For local users, delete payment and update invoice
+                setPayments(prev => prev.filter(p => p.id !== id));
+                const invoice = invoices.find(i => i.id === payment.invoiceId);
+                if (invoice) {
+                    const totalPaid = Math.max(0, (invoice.paid || 0) - payment.amount);
+                    const newStatus = totalPaid >= invoice.total ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
+                    setInvoices(prev => prev.map(i => i.id === payment.invoiceId ? { ...i, paid: totalPaid, status: newStatus } : i));
+                }
+            }
+        }
+    };
+
+    // ── Helper: Calculate customer balance from payments ──
+    const getCustomerBalance = (customerId) => {
+        const customerInvoices = invoices.filter(i => i.customerId === customerId);
+        if (customerInvoices.length === 0) return 0;
+        
+        const totalBilled = customerInvoices.reduce((sum, i) => sum + (i.total || 0), 0);
+        const totalPaid = payments
+            .filter(p => customerInvoices.some(i => i.id === p.invoiceId))
+            .reduce((sum, p) => sum + (p.amount || 0), 0);
+        
+        return totalBilled - totalPaid;
+    };
+
     // ── Business Profile ─────────────────────────────
     const updateBusiness = async (updates) => {
         if (user && db) await updateDoc(doc(db, 'businesses', user.uid), updates);
@@ -270,12 +356,13 @@ export function AppProvider({ children }) {
             products, addProduct, updateProduct, deleteProduct, adjustStock,
             customers, addCustomer, updateCustomer, deleteCustomer,
             invoices, addInvoice, updateInvoice, deleteInvoice,
+            payments, addPayment, updatePayment, deletePayment,
             // Computed
             lowStockProducts, totalSalesToday, pendingPayments,
             // Currency & Date formatting
             currency, currencySymbol, CURRENCIES, formatDate,
             // Helpers
-            AVATAR_COLORS,
+            AVATAR_COLORS, getCustomerBalance,
             sidebarOpen, setSidebarOpen,
             resetToSampleData,
         }}>

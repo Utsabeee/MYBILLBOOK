@@ -465,10 +465,6 @@ export default function Billing() {
                 <PaymentModal
                     invoice={paymentInvoice}
                     onClose={() => setPaymentInvoice(null)}
-                    onSave={(updatedInvoice) => {
-                        updateInvoice(updatedInvoice.id, updatedInvoice);
-                        setPaymentInvoice(null);
-                    }}
                 />
             )}
         </div>

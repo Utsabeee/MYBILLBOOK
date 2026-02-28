@@ -88,13 +88,18 @@ function ContactModal({ contact, onClose, onSave, defaultType = 'customer' }) {
 }
 
 // ── Contact Detail Panel ──
-function ContactDetail({ contact, onClose, invoices, AVATAR_COLORS }) {
+function ContactDetail({ contact, onClose, invoices, payments, AVATAR_COLORS }) {
     const { business, currency } = useApp();
     const [previewInvoice, setPreviewInvoice] = useState(null);
 
     const relatedInvoices = invoices.filter(i => i.customerId === contact.id);
     const totalBilled = relatedInvoices.reduce((s, i) => s + i.total, 0);
-    const totalPaid = relatedInvoices.reduce((s, i) => s + i.paid, 0);
+    
+    // Calculate paid from payments collection instead of invoice.paid
+    const totalPaid = payments
+        .filter(p => relatedInvoices.some(i => i.id === p.invoiceId))
+        .reduce((s, p) => s + p.amount, 0);
+    
     const balance = totalBilled - totalPaid;
 
     return (
@@ -176,7 +181,7 @@ function ContactDetail({ contact, onClose, invoices, AVATAR_COLORS }) {
                                     <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                                         <div style={{ fontWeight: 700, fontSize: '0.84rem' }}>{currency(inv.total)}</div>
                                         <span style={{ fontSize: '0.7rem' }}>
-                                            {inv.status === 'paid' ? 'Paid' : `Due: ${currency(inv.total - inv.paid)}`}
+                                            {inv.status === 'paid' ? 'Paid' : `Due: ${currency(inv.total - (inv.paid || 0))}`}
                                         </span>
                                     </div>
                                     <button className="btn btn-icon btn-ghost" style={{ width: 32, height: 32, marginLeft: 8 }} onClick={() => setPreviewInvoice(inv)} title="View Invoice">
@@ -202,7 +207,7 @@ function ContactDetail({ contact, onClose, invoices, AVATAR_COLORS }) {
 
 // ── Main Customers Page ──
 export default function Customers() {
-    const { customers, addCustomer, updateCustomer, deleteCustomer, invoices, AVATAR_COLORS, currency } = useApp();
+    const { customers, addCustomer, updateCustomer, deleteCustomer, invoices, payments, AVATAR_COLORS, currency } = useApp();
     const [tab, setTab] = useState('customer');
     const [search, setSearch] = useState('');
     const [showForm, setShowForm] = useState(false);
@@ -221,13 +226,19 @@ export default function Customers() {
         .filter(c => c.type === 'customer')
         .reduce((s, c) => {
             const cInv = invoices.filter(i => i.customerId === c.id);
-            return s + cInv.reduce((a, i) => a + (i.total - i.paid), 0);
+            const totalBilled = cInv.reduce((a, i) => a + i.total, 0);
+            const totalPaid = payments
+                .filter(p => cInv.some(i => i.id === p.invoiceId))
+                .reduce((a, p) => a + p.amount, 0);
+            return s + (totalBilled - totalPaid);
         }, 0);
 
     const getContactBalance = (contact) => {
         const cInv = invoices.filter(i => i.customerId === contact.id);
         const billed = cInv.reduce((s, i) => s + i.total, 0);
-        const paid = cInv.reduce((s, i) => s + i.paid, 0);
+        const paid = payments
+            .filter(p => cInv.some(i => i.id === p.invoiceId))
+            .reduce((s, p) => s + p.amount, 0);
         return billed - paid;
     };
 
@@ -383,6 +394,7 @@ export default function Customers() {
                     contact={viewContact}
                     onClose={() => setViewContact(null)}
                     invoices={invoices}
+                    payments={payments}
                     AVATAR_COLORS={AVATAR_COLORS}
                 />
             )}

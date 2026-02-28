@@ -6,21 +6,21 @@ import { useApp } from '../context/AppContext';
 import { X, Plus, Trash2, DollarSign, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-export default function PaymentModal({ invoice, onClose, onSave }) {
-    const { currency } = useApp();
+export default function PaymentModal({ invoice, onClose }) {
+    const { currency, addPayment, deletePayment, payments } = useApp();
     const [paymentAmount, setPaymentAmount] = useState('');
     const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
     const [paymentMethod, setPaymentMethod] = useState('cash');
     const [paymentNote, setPaymentNote] = useState('');
 
-    // Calculate totals
-    const payments = invoice.payments || [];
-    const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+    // Get payments for this invoice
+    const invoicePayments = payments.filter(p => p.invoiceId === invoice.id) || [];
+    const totalPaid = invoicePayments.reduce((sum, p) => sum + p.amount, 0);
     const invoiceTotal = invoice.total || 0;
     const balanceDue = invoiceTotal - totalPaid;
     const isFullyPaid = balanceDue <= 0;
 
-    const handleAddPayment = () => {
+    const handleAddPayment = async () => {
         const amount = parseFloat(paymentAmount);
         
         if (!amount || amount <= 0) {
@@ -30,47 +30,38 @@ export default function PaymentModal({ invoice, onClose, onSave }) {
 
         if (amount > balanceDue) {
             toast.warning(`Payment exceeds balance due. Balance: ${currency(balanceDue)}`);
+            return;
         }
 
-        const newPayment = {
-            id: Date.now().toString(),
-            date: paymentDate,
-            amount,
-            method: paymentMethod,
-            note: paymentNote,
-        };
+        try {
+            await addPayment({
+                invoiceId: invoice.id,
+                customerId: invoice.customerId,
+                date: paymentDate,
+                amount,
+                method: paymentMethod,
+                note: paymentNote,
+            });
 
-        const updatedPayments = [...payments, newPayment];
-        const newTotalPaid = totalPaid + amount;
-        const newStatus = newTotalPaid >= invoiceTotal ? 'paid' : newTotalPaid > 0 ? 'partial' : 'unpaid';
-
-        onSave({
-            ...invoice,
-            payments: updatedPayments,
-            paid: newTotalPaid,
-            status: newStatus,
-        });
-
-        setPaymentAmount('');
-        setPaymentDate(new Date().toISOString().slice(0, 10));
-        setPaymentMethod('cash');
-        setPaymentNote('');
-        toast.success('Payment recorded successfully!');
+            setPaymentAmount('');
+            setPaymentDate(new Date().toISOString().slice(0, 10));
+            setPaymentMethod('cash');
+            setPaymentNote('');
+            toast.success('Payment recorded successfully!');
+        } catch (error) {
+            toast.error('Failed to record payment');
+            console.error(error);
+        }
     };
 
-    const handleDeletePayment = (paymentId) => {
-        const updatedPayments = payments.filter(p => p.id !== paymentId);
-        const newTotalPaid = updatedPayments.reduce((sum, p) => sum + p.amount, 0);
-        const newStatus = newTotalPaid >= invoiceTotal ? 'paid' : newTotalPaid > 0 ? 'partial' : 'unpaid';
-
-        onSave({
-            ...invoice,
-            payments: updatedPayments,
-            paid: newTotalPaid,
-            status: newStatus,
-        });
-
-        toast.success('Payment deleted');
+    const handleDeletePayment = async (paymentId) => {
+        try {
+            await deletePayment(paymentId);
+            toast.success('Payment deleted');
+        } catch (error) {
+            toast.error('Failed to delete payment');
+            console.error(error);
+        }
     };
 
     return (
@@ -167,15 +158,15 @@ export default function PaymentModal({ invoice, onClose, onSave }) {
                     {/* Payment History */}
                     <div>
                         <div style={{ fontWeight: 700, marginBottom: 12, fontSize: '0.95rem' }}>
-                            Payment History ({payments.length})
+                            Payment History ({invoicePayments.length})
                         </div>
-                        {payments.length === 0 ? (
+                        {invoicePayments.length === 0 ? (
                             <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af', background: '#f8fafc', borderRadius: 10 }}>
                                 No payments recorded yet
                             </div>
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                {payments.map((payment, idx) => (
+                                {invoicePayments.map((payment, idx) => (
                                     <div
                                         key={payment.id}
                                         style={{
