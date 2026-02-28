@@ -30,8 +30,6 @@ function InvoiceFormModal({ invoice, onClose, onSave }) {
         discount: 0,
         notes: '',
         taxEnabled: true,
-        paid: 0,
-        payments: [],
         status: 'unpaid',
     });
     const [searchProduct, setSearchProduct] = useState('');
@@ -89,9 +87,7 @@ function InvoiceFormModal({ invoice, onClose, onSave }) {
     const handleSave = () => {
         if (!form.customerId || !form.customer) { toast.error('Please select a customer'); return; }
         if (form.items.length === 0) { toast.error('Please add at least one product'); return; }
-        const paidAmt = parseFloat(form.paid) || 0;
-        const status = paidAmt >= total ? 'paid' : paidAmt > 0 ? 'partial' : 'unpaid';
-        onSave({ ...form, subtotal, taxAmount, total, status });
+        onSave({ ...form, subtotal, taxAmount, total });
         onClose();
         toast.success(invoice ? 'Invoice updated!' : 'Invoice created!');
     };
@@ -271,21 +267,6 @@ function InvoiceFormModal({ invoice, onClose, onSave }) {
                                 <span style={{ fontWeight: 800, color: '#1f2937' }}>Total</span>
                                 <span style={{ fontWeight: 800, color: '#1f2937', fontSize: '1.1rem' }}>{currency(total)}</span>
                             </div>
-                            <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', alignItems: 'center' }}>
-                                <span style={{ color: '#6b7280' }}>Paid Amount</span>
-                                <input
-                                    type="number" min="0" max={total} value={form.paid}
-                                    onChange={e => update('paid', e.target.value)}
-                                    className="form-control" style={{ width: 90, padding: '4px 8px', textAlign: 'right' }}
-                                    placeholder="0"
-                                />
-                            </div>
-                            {parseFloat(form.paid) > 0 && (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: '0.85rem' }}>
-                                    <span style={{ color: '#6b7280' }}>Balance Due</span>
-                                    <span style={{ fontWeight: 700, color: '#dc2626' }}>{currency(Math.max(0, total - parseFloat(form.paid)))}</span>
-                                </div>
-                            )}
                         </div>
                     </div>
                 </div>

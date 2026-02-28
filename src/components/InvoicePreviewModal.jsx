@@ -5,7 +5,12 @@ import { Printer, MessageCircle, Mail, X } from 'lucide-react';
 
 export default function InvoicePreviewModal({ invoice, onClose, business }) {
     const printRef = useRef();
-    const { currency } = useApp();
+    const { currency, payments } = useApp();
+
+    // Calculate balance from payments
+    const invoicePayments = payments.filter(p => p.invoiceId === invoice.id) || [];
+    const totalPaid = invoicePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const balanceDue = invoice.total - totalPaid;
 
     const handlePrint = () => {
         const content = printRef.current.innerHTML;
@@ -119,7 +124,7 @@ export default function InvoicePreviewModal({ invoice, onClose, business }) {
                                 </div>
                                 <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, background: invoice.status === 'paid' ? '#dcfce7' : '#fef3c7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <span style={{ fontSize: '0.82rem', fontWeight: 700, color: invoice.status === 'paid' ? '#15803d' : '#92400e' }}>
-                                        {invoice.status === 'paid' ? '✅ PAID IN FULL' : `⏳ Balance Due: ${currency(invoice.total - invoice.paid)}`}
+                                        {invoice.status === 'paid' ? '✅ PAID IN FULL' : `⏳ Balance Due: ${currency(balanceDue)}`}
                                     </span>
                                 </div>
                             </div>

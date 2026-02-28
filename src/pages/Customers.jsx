@@ -169,7 +169,10 @@ function ContactDetail({ contact, onClose, invoices, payments, AVATAR_COLORS }) 
                                 No transactions yet
                             </div>
                         ) : (
-                            relatedInvoices.map(inv => (
+                            relatedInvoices.map(inv => {
+                                const invPayments = payments.filter(p => p.invoiceId === inv.id);
+                                const invTotalPaid = invPayments.reduce((s, p) => s + (p.amount || 0), 0);
+                                return (
                                 <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #f8fafc' }}>
                                     <div style={{ width: 32, height: 32, background: '#eff6ff', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                                         <FileText size={14} color="#3b82f6" />
@@ -181,14 +184,15 @@ function ContactDetail({ contact, onClose, invoices, payments, AVATAR_COLORS }) 
                                     <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                                         <div style={{ fontWeight: 700, fontSize: '0.84rem' }}>{currency(inv.total)}</div>
                                         <span style={{ fontSize: '0.7rem' }}>
-                                            {inv.status === 'paid' ? 'Paid' : `Due: ${currency(inv.total - (inv.paid || 0))}`}
+                                            {inv.status === 'paid' ? 'Paid' : `Due: ${currency(inv.total - invTotalPaid)}`}
                                         </span>
                                     </div>
                                     <button className="btn btn-icon btn-ghost" style={{ width: 32, height: 32, marginLeft: 8 }} onClick={() => setPreviewInvoice(inv)} title="View Invoice">
                                         <Eye size={14} />
                                     </button>
                                 </div>
-                            ))
+                                );
+                            })
                         )}
                     </div>
                 </div>

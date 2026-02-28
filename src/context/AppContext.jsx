@@ -339,7 +339,11 @@ export function AppProvider({ children }) {
     const lowStockProducts = products.filter(p => p.stock <= p.minStock);
     const todayStr = new Date().toISOString().slice(0, 10);
     const totalSalesToday = invoices.filter(i => i.date === todayStr).reduce((s, i) => s + i.total, 0);
-    const pendingPayments = invoices.filter(i => i.status !== 'paid').reduce((s, i) => s + (i.total - i.paid), 0);
+    const pendingPayments = invoices.filter(i => i.status !== 'paid').reduce((s, i) => {
+        const invoicePayments = payments.filter(p => p.invoiceId === i.id);
+        const totalPaid = invoicePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+        return s + (i.total - totalPaid);
+    }, 0);
 
     // Currency helper bound to current business currency
     const currency = (amount) => formatCurrency(amount, business.currencyCode);
