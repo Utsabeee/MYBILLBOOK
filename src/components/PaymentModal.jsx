@@ -72,21 +72,21 @@ export default function PaymentModal({ invoice, onClose }) {
                     <button className="modal-close" onClick={onClose}><X size={16} /></button>
                 </div>
 
-                <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <div className="modal-body payment-modal-body">
                     {/* Invoice Summary */}
-                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 16 }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+                    <div className="payment-summary-card">
+                        <div className="payment-summary-grid">
                             <div>
-                                <div style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' }}>Invoice Total</div>
-                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#1f2937', marginTop: 4 }}>{currency(invoiceTotal)}</div>
+                                <div className="payment-summary-label">Invoice Total</div>
+                                <div className="payment-summary-value">{currency(invoiceTotal)}</div>
                             </div>
                             <div>
-                                <div style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' }}>Already Paid</div>
-                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#16a34a', marginTop: 4 }}>{currency(totalPaid)}</div>
+                                <div className="payment-summary-label">Already Paid</div>
+                                <div className="payment-summary-value success">{currency(totalPaid)}</div>
                             </div>
                             <div>
-                                <div style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' }}>Balance Due</div>
-                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: isFullyPaid ? '#16a34a' : '#dc2626', marginTop: 4 }}>
+                                <div className="payment-summary-label">Balance Due</div>
+                                <div className={`payment-summary-value ${isFullyPaid ? 'success' : 'danger'}`}>
                                     {isFullyPaid ? '✓ Paid' : currency(balanceDue)}
                                 </div>
                             </div>
@@ -95,9 +95,9 @@ export default function PaymentModal({ invoice, onClose }) {
 
                     {/* Payment Form */}
                     {!isFullyPaid && (
-                        <div style={{ padding: 16, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10 }}>
-                            <div style={{ fontWeight: 700, marginBottom: 12, color: '#15803d' }}>Record New Payment</div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <div className="payment-form-card">
+                            <div className="payment-form-title">Record New Payment</div>
+                            <div className="payment-form-grid">
                                 <div className="form-group">
                                     <label className="form-label">Payment Amount *</label>
                                     <input
@@ -120,7 +120,7 @@ export default function PaymentModal({ invoice, onClose }) {
                                     />
                                 </div>
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+                            <div className="payment-form-grid payment-form-grid-spaced">
                                 <div className="form-group">
                                     <label className="form-label">Payment Method</label>
                                     <select
@@ -146,9 +146,8 @@ export default function PaymentModal({ invoice, onClose }) {
                                 </div>
                             </div>
                             <button
-                                className="btn btn-success"
+                                className="btn btn-success payment-submit-btn"
                                 onClick={handleAddPayment}
-                                style={{ marginTop: 12, width: '100%' }}
                             >
                                 <Plus size={16} /> Record Payment
                             </button>
@@ -157,34 +156,26 @@ export default function PaymentModal({ invoice, onClose }) {
 
                     {/* Payment History */}
                     <div>
-                        <div style={{ fontWeight: 700, marginBottom: 12, fontSize: '0.95rem' }}>
+                        <div className="payment-history-title">
                             Payment History ({invoicePayments.length})
                         </div>
                         {invoicePayments.length === 0 ? (
-                            <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af', background: '#f8fafc', borderRadius: 10 }}>
+                            <div className="payment-empty">
                                 No payments recorded yet
                             </div>
                         ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                {invoicePayments.map((payment, idx) => (
+                            <div className="payment-history-list">
+                                {invoicePayments.map((payment) => (
                                     <div
                                         key={payment.id}
-                                        style={{
-                                            padding: '12px 16px',
-                                            background: 'white',
-                                            border: '1px solid #e5e7eb',
-                                            borderRadius: 8,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'space-between',
-                                        }}
+                                        className="payment-history-row"
                                     >
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
-                                            <div style={{ width: 40, height: 40, borderRadius: 8, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                        <div className="payment-history-left">
+                                            <div className="payment-history-icon">
                                                 <DollarSign size={20} color="#2563eb" />
                                             </div>
                                             <div>
-                                                <div style={{ fontWeight: 600, color: '#1f2937' }}>
+                                                <div className="payment-method-name">
                                                     {payment.method === 'cash' && '💵'}
                                                     {payment.method === 'bank' && '🏦'}
                                                     {payment.method === 'cheque' && '📄'}
@@ -192,20 +183,19 @@ export default function PaymentModal({ invoice, onClose }) {
                                                     {' '}
                                                     {payment.method.charAt(0).toUpperCase() + payment.method.slice(1)}
                                                 </div>
-                                                <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
-                                                    <Calendar size={12} style={{ display: 'inline', marginRight: 4 }} />
+                                                <div className="payment-method-meta">
+                                                    <Calendar size={12} className="payment-calendar-icon" />
                                                     {payment.date}
                                                     {payment.note && ` • ${payment.note}`}
                                                 </div>
                                             </div>
                                         </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                            <div style={{ fontWeight: 800, fontSize: '1rem', color: '#16a34a', minWidth: 80, textAlign: 'right' }}>
+                                        <div className="payment-history-right">
+                                            <div className="payment-amount">
                                                 {currency(payment.amount)}
                                             </div>
                                             <button
-                                                className="btn btn-icon"
-                                                style={{ width: 28, height: 28, background: '#fef2f2', color: '#dc2626', border: 'none' }}
+                                                className="btn btn-icon payment-delete-btn"
                                                 onClick={() => handleDeletePayment(payment.id)}
                                                 title="Delete payment"
                                             >

@@ -1,7 +1,7 @@
 // =====================================================
 // Customers.jsx — Customers & Suppliers Module
 // =====================================================
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import {
     Plus, Search, Edit3, Trash2, X, User, Phone, Mail,
@@ -109,63 +109,63 @@ function ContactDetail({ contact, onClose, invoices, payments, AVATAR_COLORS }) 
                     <h3 className="modal-title">Contact Profile</h3>
                     <button className="modal-close" onClick={onClose}><X size={16} /></button>
                 </div>
-                <div className="modal-body" style={{ padding: 0 }}>
+                <div className="modal-body contact-profile-body">
                     {/* Header */}
-                    <div style={{ padding: '24px', background: 'linear-gradient(135deg,#eff6ff,#f0fdf4)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                            <div className="contact-avatar" style={{ width: 56, height: 56, background: AVATAR_COLORS[contact.colorIdx] || AVATAR_COLORS[0], fontSize: '1.2rem' }}>
+                    <div className="contact-profile-header">
+                        <div className="contact-profile-main">
+                            <div className="contact-avatar contact-profile-avatar" style={{ background: AVATAR_COLORS[contact.colorIdx] || AVATAR_COLORS[0] }}>
                                 {contact.name.charAt(0)}
                             </div>
                             <div>
-                                <div style={{ fontWeight: 800, fontSize: '1.1rem', color: '#1f2937' }}>{contact.name}</div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                                <div className="contact-profile-name">{contact.name}</div>
+                                <div className="contact-profile-tags">
                                     <span className={`badge ${contact.type === 'customer' ? 'badge-primary' : 'badge-teal'}`}>
                                         {contact.type === 'customer' ? 'Customer' : 'Supplier'}
                                     </span>
                                     {contact.gst && (
-                                        <span style={{ fontSize: '0.72rem', color: '#2563eb', fontWeight: 700 }}>Tax Reg.</span>
+                                        <span className="contact-profile-tax">Tax Reg.</span>
                                     )}
                                 </div>
                             </div>
                         </div>
 
                         {/* Balance */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginTop: 20 }}>
+                        <div className="contact-profile-stats">
                             {[
-                                { label: 'Total Billed', value: totalBilled, color: '#1f2937' },
-                                { label: 'Amount Paid', value: totalPaid, color: '#16a34a' },
-                                { label: 'Balance Due', value: balance, color: balance > 0 ? '#dc2626' : '#16a34a' },
+                                { label: 'Total Billed', value: totalBilled, cls: 'neutral' },
+                                { label: 'Amount Paid', value: totalPaid, cls: 'paid' },
+                                { label: 'Balance Due', value: balance, cls: balance > 0 ? 'due' : 'paid' },
                             ].map(s => (
-                                <div key={s.label} style={{ background: 'white', borderRadius: 10, padding: '12px 14px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-                                    <div style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</div>
-                                    <div style={{ fontSize: '1.05rem', fontWeight: 800, color: s.color, marginTop: 4 }}>{s.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                                <div key={s.label} className="contact-profile-stat-card">
+                                    <div className="contact-profile-stat-label">{s.label}</div>
+                                    <div className={`contact-profile-stat-value ${s.cls}`}>{currency(s.value)}</div>
                                 </div>
                             ))}
                         </div>
                     </div>
 
                     {/* Contact Info */}
-                    <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 10, borderBottom: '1px solid #f1f5f9' }}>
+                    <div className="contact-profile-info">
                         {[
                             { icon: Phone, label: contact.phone },
                             { icon: Mail, label: contact.email || 'No email added' },
                             { icon: MapPin, label: contact.address || 'No address added' },
                             contact.gst && { icon: Building2, label: `${business.taxLabel || 'Tax ID'}: ${contact.gst}` },
                         ].filter(Boolean).map((item, i) => (
-                            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: '0.84rem' }}>
-                                <item.icon size={16} style={{ color: '#9ca3af', marginTop: 2, flexShrink: 0 }} />
-                                <span style={{ color: '#374151' }}>{item.label}</span>
+                            <div key={i} className="contact-profile-info-row">
+                                <item.icon size={16} className="contact-profile-info-icon" />
+                                <span className="contact-profile-info-text">{item.label}</span>
                             </div>
                         ))}
                     </div>
 
                     {/* Transaction History */}
-                    <div style={{ padding: '16px 24px' }}>
-                        <div style={{ fontWeight: 700, color: '#1f2937', marginBottom: 12, fontSize: '0.9rem' }}>
+                    <div className="contact-profile-history">
+                        <div className="contact-profile-history-title">
                             Transaction History ({relatedInvoices.length})
                         </div>
                         {relatedInvoices.length === 0 ? (
-                            <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af', fontSize: '0.85rem' }}>
+                            <div className="contact-profile-history-empty">
                                 No transactions yet
                             </div>
                         ) : (
@@ -173,21 +173,21 @@ function ContactDetail({ contact, onClose, invoices, payments, AVATAR_COLORS }) 
                                 const invPayments = payments.filter(p => p.invoiceId === inv.id);
                                 const invTotalPaid = invPayments.reduce((s, p) => s + (p.amount || 0), 0);
                                 return (
-                                <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #f8fafc' }}>
-                                    <div style={{ width: 32, height: 32, background: '#eff6ff', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                <div key={inv.id} className="contact-profile-invoice-row">
+                                    <div className="contact-profile-invoice-icon-wrap">
                                         <FileText size={14} color="#3b82f6" />
                                     </div>
-                                    <div style={{ flex: 1 }}>
-                                        <div style={{ fontWeight: 600, fontSize: '0.82rem', color: '#1f2937' }}>{inv.invoiceNo}</div>
-                                        <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{inv.date}</div>
+                                    <div className="contact-profile-invoice-meta">
+                                        <div className="contact-profile-invoice-no">{inv.invoiceNo}</div>
+                                        <div className="contact-profile-invoice-date">{inv.date}</div>
                                     </div>
-                                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                                        <div style={{ fontWeight: 700, fontSize: '0.84rem' }}>{currency(inv.total)}</div>
-                                        <span style={{ fontSize: '0.7rem' }}>
+                                    <div className="contact-profile-invoice-amount-wrap">
+                                        <div className="contact-profile-invoice-total">{currency(inv.total)}</div>
+                                        <span className="contact-profile-invoice-due">
                                             {inv.status === 'paid' ? 'Paid' : `Due: ${currency(inv.total - invTotalPaid)}`}
                                         </span>
                                     </div>
-                                    <button className="btn btn-icon btn-ghost" style={{ width: 32, height: 32, marginLeft: 8 }} onClick={() => setPreviewInvoice(inv)} title="View Invoice">
+                                    <button className="btn btn-icon btn-ghost contact-profile-view-btn" onClick={() => setPreviewInvoice(inv)} title="View Invoice">
                                         <Eye size={14} />
                                     </button>
                                 </div>
@@ -211,40 +211,44 @@ function ContactDetail({ contact, onClose, invoices, payments, AVATAR_COLORS }) 
 
 // ── Main Customers Page ──
 export default function Customers() {
-    const { customers, addCustomer, updateCustomer, deleteCustomer, invoices, payments, AVATAR_COLORS, currency } = useApp();
+    const { customers, addCustomer, updateCustomer, deleteCustomer, invoices, payments, AVATAR_COLORS, currency, getCustomerBalance } = useApp();
     const [tab, setTab] = useState('customer');
     const [search, setSearch] = useState('');
     const [showForm, setShowForm] = useState(false);
     const [editContact, setEditContact] = useState(null);
     const [viewContact, setViewContact] = useState(null);
 
-    const filtered = customers.filter(c => {
-        const matchTab = c.type === tab;
-        const matchSearch = c.name.toLowerCase().includes(search.toLowerCase()) ||
-            c.phone.includes(search) ||
-            (c.email && c.email.toLowerCase().includes(search.toLowerCase()));
-        return matchTab && matchSearch;
-    });
+    // Memoized filtered list to prevent lag
+    const filtered = useMemo(() => 
+        customers.filter(c => {
+            const matchTab = c.type === tab;
+            const matchSearch = c.name.toLowerCase().includes(search.toLowerCase()) ||
+                c.phone.includes(search) ||
+                (c.email && c.email.toLowerCase().includes(search.toLowerCase()));
+            return matchTab && matchSearch;
+        }),
+    [customers, tab, search]);
 
-    const totalReceivable = customers
-        .filter(c => c.type === 'customer')
-        .reduce((s, c) => {
-            const cInv = invoices.filter(i => i.customerId === c.id);
-            const totalBilled = cInv.reduce((a, i) => a + i.total, 0);
-            const totalPaid = payments
-                .filter(p => cInv.some(i => i.id === p.invoiceId))
-                .reduce((a, p) => a + p.amount, 0);
-            return s + (totalBilled - totalPaid);
-        }, 0);
+    // Memoized total receivable calculation
+    const totalReceivable = useMemo(() => {
+        const customerBalances = customers
+            .filter(c => c.type === 'customer')
+            .map(customer => ({
+                name: customer.name,
+                balance: getCustomerBalance(customer.id)
+            }));
+        
+        const total = customerBalances.reduce((sum, c) => sum + c.balance, 0);
+        
+        // Log detailed breakdown for verification
+        console.log('🧾 Customer Page - Detailed Breakdown:');
+        console.table(customerBalances.filter(c => c.balance !== 0));
+        console.log('🧾 Customer Page - Total Receivable:', total);
+        return total;
+    }, [customers, getCustomerBalance]);
 
-    const getContactBalance = (contact) => {
-        const cInv = invoices.filter(i => i.customerId === contact.id);
-        const billed = cInv.reduce((s, i) => s + i.total, 0);
-        const paid = payments
-            .filter(p => cInv.some(i => i.id === p.invoiceId))
-            .reduce((s, p) => s + p.amount, 0);
-        return billed - paid;
-    };
+    // Memoized balance calculator
+    const getContactBalance = useMemo(() => (contact) => getCustomerBalance(contact.id), [getCustomerBalance]);
 
     return (
         <div style={{ animation: 'fadeIn 0.4s ease' }}>
@@ -258,7 +262,7 @@ export default function Customers() {
                 ].map(s => (
                     <div key={s.label} className={`stat-card ${s.cls}`}>
                         <div className="stat-label">{s.label}</div>
-                        <div className="stat-value" style={{ fontSize: '1.4rem' }}>{s.value}</div>
+                        <div className="stat-value stat-value-amount" style={{ fontSize: '1.4rem' }}>{s.value}</div>
                     </div>
                 ))}
             </div>
@@ -275,12 +279,12 @@ export default function Customers() {
                         </button>
                     </div>
 
-                    <div className="search-input-wrap" style={{ maxWidth: 280 }}>
+                    <div className="search-input-wrap customers-search-wrap">
                         <Search />
                         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, phone, email..." />
                     </div>
 
-                    <div style={{ marginLeft: 'auto' }}>
+                    <div className="customers-add-wrap">
                         <button className="btn btn-primary" onClick={() => { setEditContact(null); setShowForm(true); }}>
                             <Plus size={16} /> Add {tab === 'customer' ? 'Customer' : 'Supplier'}
                         </button>
@@ -288,7 +292,7 @@ export default function Customers() {
                 </div>
 
                 {/* Contact Grid */}
-                <div style={{ padding: '16px' }}>
+                <div className="customers-grid-shell">
                     {filtered.length === 0 ? (
                         <div className="empty-state">
                             <div className="empty-state-icon"><Users size={36} /></div>
@@ -299,7 +303,7 @@ export default function Customers() {
                             </button>
                         </div>
                     ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
+                        <div className="customers-grid">
                             {filtered.map(contact => {
                                 const balance = getContactBalance(contact);
                                 const cInvCount = invoices.filter(i => i.customerId === contact.id).length;
@@ -307,44 +311,37 @@ export default function Customers() {
                                 return (
                                     <div
                                         key={contact.id}
-                                        style={{
-                                            background: 'white', borderRadius: 12, padding: '16px',
-                                            border: '1px solid #e5e7eb', cursor: 'pointer',
-                                            transition: 'all 0.2s',
-                                            boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-                                        }}
-                                        onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.1)'; e.currentTarget.style.borderColor = '#bfdbfe'; }}
-                                        onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)'; e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                                        className="customer-card"
                                         onClick={() => setViewContact(contact)}
                                     >
-                                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                                        <div className="customer-main-row">
                                             <div className="contact-avatar" style={{ background: AVATAR_COLORS[contact.colorIdx] || AVATAR_COLORS[0] }}>
                                                 {contact.name.charAt(0)}
                                             </div>
-                                            <div style={{ flex: 1, overflow: 'hidden' }}>
-                                                <div style={{ fontWeight: 700, color: '#1f2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            <div className="customer-main-meta">
+                                                <div className="customer-name">
                                                     {contact.name}
                                                 </div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
-                                                    <span style={{ fontSize: '0.78rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: 3 }}>
+                                                <div className="customer-phone-row">
+                                                    <span className="customer-phone-pill">
                                                         <Phone size={11} /> {contact.phone}
                                                     </span>
                                                     {contact.gst && (
-                                                        <span style={{ fontSize: '0.65rem', background: '#dbeafe', color: '#1d4ed8', padding: '1px 6px', borderRadius: 99, fontWeight: 700 }}>GST</span>
+                                                        <span className="customer-tax-pill">GST</span>
                                                     )}
                                                 </div>
                                                 {contact.email && (
-                                                    <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                    <div className="customer-email-row">
                                                         <Mail size={11} /> {contact.email}
                                                     </div>
                                                 )}
                                             </div>
-                                            <div style={{ display: 'flex', gap: 4 }}>
-                                                <button className="btn btn-icon btn-ghost" style={{ width: 28, height: 28 }}
+                                            <div className="customer-action-row">
+                                                <button className="btn btn-icon btn-ghost customer-icon-btn"
                                                     onClick={e => { e.stopPropagation(); setEditContact(contact); setShowForm(true); }}>
                                                     <Edit3 size={13} />
                                                 </button>
-                                                <button className="btn btn-icon" style={{ width: 28, height: 28, background: '#fef2f2', color: '#dc2626', border: 'none' }}
+                                                <button className="btn btn-icon customer-delete-btn"
                                                     onClick={e => { e.stopPropagation(); if (confirm(`Delete "${contact.name}"?`)) deleteCustomer(contact.id); }}>
                                                     <Trash2 size={13} />
                                                 </button>
@@ -352,28 +349,28 @@ export default function Customers() {
                                         </div>
 
                                         {/* Balance & Invoices */}
-                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, paddingTop: 12, borderTop: '1px solid #f1f5f9' }}>
-                                            <div style={{ display: 'flex', gap: 12 }}>
-                                                <div>
-                                                    <div style={{ fontSize: '0.68rem', color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase' }}>Balance</div>
-                                                    <div style={{ fontWeight: 800, fontSize: '0.95rem', color: balance > 0 ? '#dc2626' : balance < 0 ? '#16a34a' : '#6b7280' }}>
-                                                        {balance === 0 ? currency(0) : balance > 0 ? `${balance.toLocaleString(undefined, { maximumFractionDigits: 0 })} due` : `${Math.abs(balance).toLocaleString(undefined, { maximumFractionDigits: 0 })} credit`}
+                                        <div className="customer-footer-row">
+                                            <div className="customer-stats-row">
+                                                <div className="customer-stat-col customer-balance-col">
+                                                    <div className="customer-stat-label">Balance</div>
+                                                    <div className={`customer-balance-val ${balance > 0 ? 'due' : balance < 0 ? 'credit' : 'neutral'}`}>
+                                                        {balance === 0 ? currency(0) : balance > 0 ? `${currency(balance)} due` : `${currency(Math.abs(balance))} credit`}
                                                     </div>
                                                 </div>
-                                                <div>
-                                                    <div style={{ fontSize: '0.68rem', color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase' }}>Invoices</div>
-                                                    <div style={{ fontWeight: 700, color: '#374151', fontSize: '0.9rem' }}>{cInvCount} bills</div>
+                                                <div className="customer-stat-col customer-invoices-col">
+                                                    <div className="customer-stat-label">Invoices</div>
+                                                    <div className="customer-invoice-val">{cInvCount} bills</div>
                                                 </div>
                                             </div>
 
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <div className="customer-endcap-row">
                                                 {balance > 5000 && (
-                                                    <button className="btn btn-sm" style={{ background: '#fef3c7', color: '#92400e', border: 'none', padding: '4px 8px', fontSize: '0.72rem' }}
+                                                    <button className="btn btn-sm customer-remind-btn"
                                                         onClick={e => { e.stopPropagation(); toast.success(`📱 Payment reminder sent to ${contact.name}!`); }}>
                                                         <Bell size={11} /> Remind
                                                     </button>
                                                 )}
-                                                <ChevronRight size={16} color="#9ca3af" />
+                                                <ChevronRight size={16} className="customer-chevron" />
                                             </div>
                                         </div>
                                     </div>

@@ -35,7 +35,7 @@ export default function InvoicePreviewModal({ invoice, onClose, business }) {
             <div className="modal modal-lg">
                 <div className="modal-header">
                     <h3 className="modal-title">Invoice Preview — {invoice.invoiceNo}</h3>
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div className="invoice-preview-actions">
                         <button className="btn btn-outline btn-sm" onClick={handlePrint}>
                             <Printer size={14} /> Print
                         </button>
@@ -51,10 +51,7 @@ export default function InvoicePreviewModal({ invoice, onClose, business }) {
                 </div>
 
                 <div className="modal-body">
-                    <div ref={printRef} style={{
-                        background: 'white', borderRadius: 12, border: '1px solid #e5e7eb',
-                        padding: 32, maxWidth: 720, margin: '0 auto',
-                    }}>
+                    <div ref={printRef} className="invoice-preview-sheet">
                         {/* Header */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 28, alignItems: 'flex-start' }}>
                             <div>

@@ -1,7 +1,7 @@
 // =====================================================
 // Inventory.jsx — Product & Stock Management
 // =====================================================
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import {
     Plus, Search, Edit3, Trash2, X, Package, AlertTriangle,
@@ -21,6 +21,27 @@ const UNITS = ['PCS', 'KG', 'LTR', 'PKT', 'BOX', 'TUBE', 'GRM', 'METER'];
 const AVATAR_COLORS_PROD = [
     '#3b82f6', '#14b8a6', '#a855f7', '#f59e0b', '#ef4444', '#22c55e', '#ec4899', '#0ea5e9',
 ];
+
+function StockTooltip({ active, payload, label }) {
+    if (!active || !payload || payload.length === 0) return null;
+
+    const currentStock = payload.find(p => p.dataKey === 'stock')?.value ?? 0;
+    const minStock = payload.find(p => p.dataKey === 'min')?.value ?? 0;
+
+    return (
+        <div className="stock-tooltip">
+            <div className="stock-tooltip-title">{label}</div>
+            <div className="stock-tooltip-row">
+                <span className="stock-tooltip-key">Current</span>
+                <span className="stock-tooltip-val">{currentStock}</span>
+            </div>
+            <div className="stock-tooltip-row">
+                <span className="stock-tooltip-key">Minimum</span>
+                <span className="stock-tooltip-val muted">{minStock}</span>
+            </div>
+        </div>
+    );
+}
 
 // ── Product Form Modal ──
 function ProductModal({ product, onClose, onSave }) {
@@ -202,31 +223,45 @@ function StockAdjustModal({ product, onClose, onAdjust }) {
 export default function Inventory() {
     const { products, addProduct, updateProduct, deleteProduct, adjustStock, lowStockProducts , currency } = useApp();
     const [category, setCategory] = useState('All');
+    const [stockTab, setStockTab] = useState('all');
     const [search, setSearch] = useState('');
     const [showForm, setShowForm] = useState(false);
     const [editProduct, setEditProduct] = useState(null);
     const [adjustProd, setAdjustProd] = useState(null);
     const [sortBy, setSortBy] = useState('name');
+    const [chartStartIndex, setChartStartIndex] = useState(0);
 
-    const filtered = products.filter(p => {
-        const matchCat = category === 'All' || p.category === category;
-        const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
-            p.sku.toLowerCase().includes(search.toLowerCase());
-        return matchCat && matchSearch;
-    }).sort((a, b) => {
-        if (sortBy === 'name') return a.name.localeCompare(b.name);
-        if (sortBy === 'stock') return a.stock - b.stock;
-        if (sortBy === 'price') return b.salePrice - a.salePrice;
-        return 0;
-    });
+    // Memoized filtered list to prevent lag
+    const filtered = useMemo(() =>
+        products.filter(p => {
+            const matchCat = category === 'All' || p.category === category;
+            const matchStockTab = stockTab === 'all' || p.stock <= p.minStock;
+            const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
+                p.sku.toLowerCase().includes(search.toLowerCase());
+            return matchCat && matchStockTab && matchSearch;
+        }).sort((a, b) => {
+            if (sortBy === 'name') return a.name.localeCompare(b.name);
+            if (sortBy === 'stock') return a.stock - b.stock;
+            if (sortBy === 'price') return b.salePrice - a.salePrice;
+            return 0;
+        }),
+    [products, category, stockTab, search, sortBy]);
 
-    const stockChartData = products.slice(0, 8).map(p => ({
-        name: p.name.split(' ').slice(0, 2).join(' '),
-        stock: p.stock,
-        min: p.minStock,
-    }));
+    // Memoized stock chart data - show 8 products at a time with sliding window
+    const CHART_ITEMS = 8;
+    const stockChartData = useMemo(() => {
+        const start = Math.min(chartStartIndex, Math.max(0, products.length - CHART_ITEMS));
+        return products.slice(start, start + CHART_ITEMS).map(p => ({
+            name: p.name.split(' ').slice(0, 2).join(' '),
+            stock: p.stock,
+            min: p.minStock,
+        }));
+    }, [products, chartStartIndex]);
 
-    const totalStockValue = products.reduce((s, p) => s + (p.stock * p.purchasePrice), 0);
+    // Memoized total stock value
+    const totalStockValue = useMemo(() =>
+        products.reduce((s, p) => s + (p.stock * p.purchasePrice), 0),
+    [products]);
 
     return (
         <div style={{ animation: 'fadeIn 0.4s ease' }}>
@@ -234,30 +269,30 @@ export default function Inventory() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 24 }}>
                 {[
                     { label: 'Total Products', value: products.length, cls: 'blue' },
-                    { label: 'Low Stock Items', value: lowStockProducts.length, cls: lowStockProducts.length > 0 ? 'red' : 'green' },
+                    { label: 'LS Items', value: lowStockProducts.length, cls: lowStockProducts.length > 0 ? 'red' : 'green' },
                     { label: 'Total Stock Value', value: currency(totalStockValue), cls: 'teal' },
-                    { label: 'Out of Stock', value: products.filter(p => p.stock === 0).length, cls: 'orange' },
+                    { label: 'O/S', value: products.filter(p => p.stock === 0).length, cls: 'orange' },
                 ].map(s => (
                     <div key={s.label} className={`stat-card ${s.cls}`}>
                         <div className="stat-label">{s.label}</div>
-                        <div className="stat-value" style={{ fontSize: '1.4rem' }}>{s.value}</div>
+                        <div className="stat-value stat-value-amount" style={{ fontSize: '1.4rem' }}>{s.value}</div>
                     </div>
                 ))}
             </div>
 
-            {/* Stock Chart */}
+            {/* Stock Chart with Slider */}
             <div className="card" style={{ marginBottom: 20 }}>
                 <div className="card-header">
                     <span className="card-title">Stock Level Overview</span>
-                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Current vs. Minimum Stock</span>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Products {chartStartIndex + 1}-{Math.min(chartStartIndex + CHART_ITEMS, products.length)} of {products.length}</span>
                 </div>
                 <div style={{ padding: '8px' }}>
-                    <ResponsiveContainer width="100%" height={200}>
-                        <BarChart data={stockChartData} barSize={20}>
+                    <ResponsiveContainer width="100%" height={220}>
+                        <BarChart data={stockChartData} barSize={35}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                             <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                             <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                            <Tooltip />
+                            <Tooltip content={<StockTooltip />} cursor={{ fill: 'rgba(59,130,246,0.12)' }} />
                             <Bar dataKey="stock" name="Current Stock" radius={[4, 4, 0, 0]}>
                                 {stockChartData.map((entry, i) => (
                                     <Cell key={i} fill={entry.stock <= entry.min ? '#ef4444' : '#3b82f6'} />
@@ -267,33 +302,59 @@ export default function Inventory() {
                         </BarChart>
                     </ResponsiveContainer>
                 </div>
+                {products.length > CHART_ITEMS && (
+                    <div style={{ padding: '12px 16px' }}>
+                        <input
+                            type="range"
+                            min="0"
+                            max={Math.max(0, products.length - CHART_ITEMS)}
+                            value={chartStartIndex}
+                            onChange={(e) => setChartStartIndex(parseInt(e.target.value))}
+                            style={{ width: '100%', cursor: 'pointer' }}
+                        />
+                    </div>
+                )}
             </div>
 
             {/* Products Table Card */}
             <div className="card">
                 {/* Filters */}
-                <div className="filter-bar" style={{ flexWrap: 'wrap' }}>
-                    <div className="search-input-wrap" style={{ maxWidth: 280 }}>
+                <div className="filter-bar inventory-filter-bar">
+                    <div className="search-input-wrap inventory-search-wrap">
                         <Search />
                         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search products or SKU..." />
                     </div>
 
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                            onClick={() => setStockTab('all')}
+                            className={`btn btn-sm ${stockTab === 'all' ? 'btn-primary' : 'btn-ghost'}`}
+                        >
+                            All Items ({products.length})
+                        </button>
+                        <button
+                            onClick={() => setStockTab('low')}
+                            className={`btn btn-sm ${stockTab === 'low' ? 'btn-primary' : 'btn-ghost'}`}
+                        >
+                            Low Stock ({lowStockProducts.length})
+                        </button>
+                    </div>
+
                     {/* Category pills */}
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <div className="inventory-cat-pills">
                         {CATEGORIES.map(cat => (
                             <button
                                 key={cat}
                                 onClick={() => setCategory(cat)}
-                                className={`btn btn-sm ${category === cat ? 'btn-primary' : 'btn-ghost'}`}
-                                style={{ padding: '5px 12px' }}
+                                className={`btn btn-sm inventory-cat-btn ${category === cat ? 'btn-primary' : 'btn-ghost'}`}
                             >
                                 {cat}
                             </button>
                         ))}
                     </div>
 
-                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                        <select className="form-select" style={{ width: 140, padding: '6px 10px' }} value={sortBy} onChange={e => setSortBy(e.target.value)}>
+                    <div className="inventory-actions-wrap">
+                        <select className="form-select inventory-sort-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
                             <option value="name">Sort: Name</option>
                             <option value="stock">Sort: Stock</option>
                             <option value="price">Sort: Price</option>
@@ -305,15 +366,21 @@ export default function Inventory() {
                 </div>
 
                 {/* Table */}
-                <div className="table-wrapper" style={{ borderRadius: 0, border: 'none' }}>
+                <div className="table-wrapper table-flat">
                     {filtered.length === 0 ? (
                         <div className="empty-state">
                             <div className="empty-state-icon"><Package size={36} /></div>
                             <h3>No products found</h3>
-                            <p>Add your first product to start managing inventory</p>
-                            <button className="btn btn-primary" onClick={() => setShowForm(true)}>
-                                <Plus size={16} /> Add Product
-                            </button>
+                            <p>
+                                {stockTab === 'low'
+                                    ? 'No low stock items match the current filters.'
+                                    : 'Add your first product to start managing inventory'}
+                            </p>
+                            {stockTab !== 'low' && (
+                                <button className="btn btn-primary" onClick={() => setShowForm(true)}>
+                                    <Plus size={16} /> Add Product
+                                </button>
+                            )}
                         </div>
                     ) : (
                         <table>
@@ -322,10 +389,10 @@ export default function Inventory() {
                                     <th>Product</th>
                                     <th>Category</th>
                                     <th>SKU</th>
-                                    <th>Sale Price</th>
-                                    <th>Purchase Price</th>
+                                    <th className="align-right">Sale Price</th>
+                                    <th className="align-right">Purchase Price</th>
                                     <th>Stock</th>
-                                    <th>Tax %</th>
+                                    <th className="align-right">Tax %</th>
                                     <th>Status</th>
                                     <th>Actions</th>
                                 </tr>
@@ -340,30 +407,30 @@ export default function Inventory() {
                                     return (
                                         <tr key={p.id}>
                                             <td>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                    <div style={{ width: 36, height: 36, borderRadius: 10, background: `${AVATAR_COLORS_PROD[colorIdx]}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                                <div className="inventory-product-cell">
+                                                    <div className="inventory-product-icon" style={{ background: `${AVATAR_COLORS_PROD[colorIdx]}20` }}>
                                                         <Package size={16} style={{ color: AVATAR_COLORS_PROD[colorIdx] }} />
                                                     </div>
                                                     <div>
-                                                        <div style={{ fontWeight: 700, color: '#1f2937', fontSize: '0.875rem' }}>{p.name}</div>
+                                                        <div className="inventory-product-name">{p.name}</div>
                                                     </div>
                                                 </div>
                                             </td>
                                             <td>
                                                 <span className="badge badge-gray">{p.category}</span>
                                             </td>
-                                            <td style={{ color: '#6b7280', fontSize: '0.8rem', fontFamily: 'monospace' }}>{p.sku}</td>
-                                            <td style={{ fontWeight: 700 }}>{currency(p.salePrice)}</td>
-                                            <td style={{ color: '#6b7280' }}>{currency(p.purchasePrice)}</td>
+                                            <td className="inventory-sku-cell">{p.sku}</td>
+                                            <td className="amount-cell" style={{ fontWeight: 700 }}>{currency(p.salePrice)}</td>
+                                            <td className="amount-cell inventory-purchase-cell">{currency(p.purchasePrice)}</td>
                                             <td>
-                                                <div style={{ minWidth: 100 }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                                                <div className="inventory-stock-wrap">
+                                                    <div className="inventory-stock-top">
                                                         {isOut ? (
                                                             <AlertTriangle size={12} color="#ef4444" />
                                                         ) : isLow ? (
                                                             <AlertTriangle size={12} color="#f59e0b" />
                                                         ) : null}
-                                                        <span style={{ fontWeight: 700, color: isOut ? '#dc2626' : isLow ? '#d97706' : '#1f2937' }}>
+                                                        <span className={`inventory-stock-val ${isOut ? 'out' : isLow ? 'low' : 'normal'}`}>
                                                             {p.stock} {p.unit}
                                                         </span>
                                                     </div>
@@ -373,28 +440,28 @@ export default function Inventory() {
                                                             background: isOut ? '#ef4444' : isLow ? '#f59e0b' : '#22c55e',
                                                         }} />
                                                     </div>
-                                                    <div style={{ fontSize: '0.68rem', color: '#9ca3af', marginTop: 2 }}>Min: {p.minStock}</div>
+                                                    <div className="inventory-stock-min">Min: {p.minStock}</div>
                                                 </div>
                                             </td>
-                                            <td>
-                                                <span className="badge badge-primary">{p.taxRate ?? 0}%</span>
+                                            <td className="amount-cell">
+                                                <span className="badge badge-primary inventory-tax-badge">{p.taxRate ?? 0}%</span>
                                             </td>
                                             <td>
-                                                {isOut ? <span className="badge badge-danger">Out of Stock</span> :
-                                                    isLow ? <span className="badge badge-warning">Low Stock</span> :
-                                                        <span className="badge badge-success">In Stock</span>}
+                                                {isOut ? <span className="badge badge-danger inventory-status-badge">O/S</span> :
+                                                    isLow ? <span className="badge badge-warning inventory-status-badge">LS</span> :
+                                                        <span className="badge badge-success inventory-status-badge">STK</span>}
                                             </td>
                                             <td>
-                                                <div style={{ display: 'flex', gap: 4 }}>
-                                                    <button className="btn btn-sm" style={{ background: '#f0fdf4', color: '#16a34a', border: 'none', padding: '5px 10px' }}
+                                                <div className="inventory-row-actions">
+                                                    <button className="btn btn-sm inventory-stock-btn inventory-adjust-btn"
                                                         onClick={() => setAdjustProd(p)} title="Adjust Stock">
-                                                        <ArrowUp size={12} /> Stock
+                                                        <ArrowUp size={12} /> Adjust
                                                     </button>
-                                                    <button className="btn btn-icon btn-ghost" style={{ width: 30, height: 30 }}
+                                                    <button className="btn btn-icon btn-ghost inventory-icon-btn"
                                                         onClick={() => { setEditProduct(p); setShowForm(true); }}>
                                                         <Edit3 size={13} />
                                                     </button>
-                                                    <button className="btn btn-icon" style={{ width: 30, height: 30, background: '#fef2f2', color: '#dc2626', border: 'none' }}
+                                                    <button className="btn btn-icon inventory-delete-btn"
                                                         onClick={() => { if (confirm(`Delete "${p.name}"?`)) deleteProduct(p.id); }}>
                                                         <Trash2 size={13} />
                                                     </button>

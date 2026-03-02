@@ -3,7 +3,7 @@
 // Sprint 1: localStorage persistence + global-first
 //            (no GST/GSTIN/India-only references)
 // =====================================================
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { auth, db } from '../firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { collection, query, where, onSnapshot, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
@@ -19,12 +19,17 @@ export function formatCurrency(amount, currencyCode = 'NPR') {
     const cur = CURRENCIES.find(c => c.code === currencyCode) || CURRENCIES[0];
     const n = Number(amount) || 0;
     try {
-        return new Intl.NumberFormat(cur.locale, {
+        const formatted = new Intl.NumberFormat(cur.locale, {
             style: 'currency',
             currency: currencyCode,
             minimumFractionDigits: 0,
             maximumFractionDigits: 2,
         }).format(n);
+        // Replace unwanted $ with correct symbol if it appears
+        if (currencyCode === 'NPR' && formatted.includes('$')) {
+            return formatted.replace('$', cur.symbol);
+        }
+        return formatted;
     } catch {
         return `${cur.symbol}${n.toLocaleString()}`;
     }
@@ -81,9 +86,13 @@ export function AppProvider({ children }) {
     const [invoices, setInvoices] = useState(() => LS.get('mbb_invoices', DEFAULT_INVOICES));
     const [nextInvoiceNo, setNextInvoiceNo] = useState(() => LS.get('mbb_nextInv', 1));
     const [payments, setPayments] = useState(() => LS.get('mbb_payments', []));
+    const [notifications, setNotifications] = useState(() => LS.get('mbb_notifications', []));
 
     // UI state
     const [sidebarOpen, setSidebarOpen] = useState(false);
+
+    // Ref to track latest payments for use in invoices listener
+    const paymentsRef = useRef([]);
 
     // ── Firebase Auth Listener ───────────────────────
     useEffect(() => {
@@ -98,6 +107,72 @@ export function AppProvider({ children }) {
             }
         });
     }, []);
+
+    // ── Sync localStorage to Firebase on first login ──
+    useEffect(() => {
+        if (!user || !db) return;
+        
+        const syncLocalToFirebase = async () => {
+            try {
+                const uid = user.uid;
+                
+                // Sync business profile
+                const localBusiness = LS.get('mbb_business', DEFAULT_BUSINESS);
+                const businessWithUser = {
+                    ...localBusiness,
+                    email: user.email,
+                    name: user.displayName || localBusiness.name || 'My Default Business'
+                };
+                await setDoc(doc(db, 'businesses', uid), businessWithUser, { merge: true });
+                
+                // Sync products
+                const localProducts = LS.get('mbb_products', DEFAULT_PRODUCTS) || [];
+                for (const prod of localProducts) {
+                    if (prod.id) {
+                        await setDoc(doc(db, 'products', prod.id.toString()), 
+                            { ...prod, businessId: uid }, { merge: true }
+                        );
+                    }
+                }
+                
+                // Sync customers
+                const localCustomers = LS.get('mbb_customers', DEFAULT_CUSTOMERS) || [];
+                for (const cust of localCustomers) {
+                    if (cust.id) {
+                        await setDoc(doc(db, 'customers', cust.id.toString()), 
+                            { ...cust, businessId: uid }, { merge: true }
+                        );
+                    }
+                }
+                
+                // Sync invoices
+                const localInvoices = LS.get('mbb_invoices', DEFAULT_INVOICES) || [];
+                for (const inv of localInvoices) {
+                    if (inv.id) {
+                        await setDoc(doc(db, 'invoices', inv.id.toString()), 
+                            { ...inv, businessId: uid }, { merge: true }
+                        );
+                    }
+                }
+                
+                // Sync payments
+                const localPayments = LS.get('mbb_payments', []) || [];
+                for (const pay of localPayments) {
+                    if (pay.id) {
+                        await setDoc(doc(db, 'payments', pay.id.toString()), 
+                            { ...pay, businessId: uid }, { merge: true }
+                        );
+                    }
+                }
+                
+                console.log('✅ Synced localStorage data to Firebase');
+            } catch (err) {
+                console.error('⚠️ Sync error:', err.message);
+            }
+        };
+        
+        syncLocalToFirebase();
+    }, [user]);
 
     // ── Firebase Firestore Sync ──────────────────────
     useEffect(() => {
@@ -124,25 +199,28 @@ export function AppProvider({ children }) {
             setCustomers(snap.empty ? [] : snap.docs.map(d => ({ id: d.id, ...d.data() })));
         });
 
+        // Helper to update invoices with payment info
+        const updateInvoicesWithPayments = (invoicesToUpdate, paymentData) => {
+            return invoicesToUpdate.map(invoice => {
+                const invoicePayments = paymentData.filter(p => p.invoiceId === invoice.id);
+                const totalPaid = invoicePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+                const invoiceTotal = invoice.total || 0;
+                const newStatus = totalPaid >= invoiceTotal ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
+                return {
+                    ...invoice,
+                    paid: totalPaid,
+                    status: newStatus,
+                };
+            });
+        };
+
         const unsubPayments = onSnapshot(query(collection(db, 'payments'), where('businessId', '==', uid)), (snap) => {
             const fetchedPayments = snap.empty ? [] : snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            paymentsRef.current = fetchedPayments; // Update ref
             setPayments(fetchedPayments);
             
             // Update invoices with correct paid/status based on payments
-            setInvoices(prevInvoices => {
-                return prevInvoices.map(invoice => {
-                    const invoicePayments = fetchedPayments.filter(p => p.invoiceId === invoice.id);
-                    const totalPaid = invoicePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-                    const invoiceTotal = invoice.total || 0;
-                    const newStatus = totalPaid >= invoiceTotal ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
-                    
-                    return {
-                        ...invoice,
-                        paid: totalPaid,
-                        status: newStatus,
-                    };
-                });
-            });
+            setInvoices(prevInvoices => updateInvoicesWithPayments(prevInvoices, fetchedPayments));
         });
 
         const unsubInvoices = onSnapshot(query(collection(db, 'invoices'), where('businessId', '==', uid)), (snap) => {
@@ -151,7 +229,10 @@ export function AppProvider({ children }) {
                 setNextInvoiceNo(1);
             } else {
                 const fetchedInvoices = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                setInvoices(fetchedInvoices);
+                // Update with payment info using latest payments from ref
+                setInvoices(prevInvoices => {
+                    return updateInvoicesWithPayments(fetchedInvoices, paymentsRef.current);
+                });
                 const maxInv = fetchedInvoices.reduce((max, inv) => {
                     const parts = inv.invoiceNo?.split('-');
                     if (!parts) return max;
@@ -167,6 +248,13 @@ export function AppProvider({ children }) {
         };
     }, [user]);
 
+    // ── Ensure currencyCode is set (migration) ───────
+    useEffect(() => {
+        if (!business.currencyCode) {
+            setBusiness(prev => ({ ...prev, currencyCode: 'NPR' }));
+        }
+    }, [business.currencyCode]);
+
     // ── LocalStorage Fallback Sync ───────────────────
     useEffect(() => { if (!user) LS.set('mbb_auth', isAuthenticated); }, [isAuthenticated, user]);
     useEffect(() => { if (!user) LS.set('mbb_business', business); }, [business, user]);
@@ -175,6 +263,7 @@ export function AppProvider({ children }) {
     useEffect(() => { if (!user) LS.set('mbb_invoices', invoices); }, [invoices, user]);
     useEffect(() => { if (!user) LS.set('mbb_nextInv', nextInvoiceNo); }, [nextInvoiceNo, user]);
     useEffect(() => { if (!user) LS.set('mbb_payments', payments); }, [payments, user]);
+    useEffect(() => { if (!user) LS.set('mbb_notifications', notifications); }, [notifications, user]);
 
     // ── Auth ─────────────────────────────────────────
     const login = () => setIsAuthenticated(true);
@@ -214,6 +303,15 @@ export function AppProvider({ children }) {
         const newStock = Math.max(0, prod.stock + d);
         if (user && db) await updateDoc(doc(db, 'products', id.toString()), { stock: newStock });
         else setProducts(prev => prev.map(p => p.id === id ? { ...p, stock: newStock } : p));
+        
+        // Generate low stock notification
+        if (newStock <= prod.minStock && prod.stock > prod.minStock) {
+            addNotification({
+                type: 'warning',
+                title: 'Low Stock Alert',
+                body: `${prod.name} is now low in stock (${newStock} ${prod.unit} remaining)`,
+            });
+        }
     };
 
     // ── Customer CRUD ────────────────────────────────
@@ -240,6 +338,19 @@ export function AppProvider({ children }) {
         const invoiceNo = `${business.invoicePrefix}-${year}-${String(nextInvoiceNo).padStart(3, '0')}`;
         const invObj = { ...invoice, id, invoiceNo, businessId: user?.uid || 'local' };
 
+        // Deduct inventory for each item
+        for (const item of (invoice.items || [])) {
+            const product = products.find(p => p.id === item.productId);
+            if (product) {
+                const newStock = Math.max(0, product.stock - item.qty);
+                if (user && db) {
+                    await updateDoc(doc(db, 'products', item.productId.toString()), { stock: newStock });
+                } else {
+                    setProducts(prev => prev.map(p => p.id === item.productId ? { ...p, stock: newStock } : p));
+                }
+            }
+        }
+
         if (user && db) {
             await setDoc(doc(db, 'invoices', id), invObj);
         } else {
@@ -253,6 +364,22 @@ export function AppProvider({ children }) {
         else setInvoices(prev => prev.map(i => i.id === id ? { ...i, ...u } : i));
     };
     const deleteInvoice = async (id) => {
+        // Restore inventory when deleting invoice
+        const invoiceToDelete = invoices.find(i => i.id === id);
+        if (invoiceToDelete) {
+            for (const item of (invoiceToDelete.items || [])) {
+                const product = products.find(p => p.id === item.productId);
+                if (product) {
+                    const newStock = product.stock + item.qty;
+                    if (user && db) {
+                        await updateDoc(doc(db, 'products', item.productId.toString()), { stock: newStock });
+                    } else {
+                        setProducts(prev => prev.map(p => p.id === item.productId ? { ...p, stock: newStock } : p));
+                    }
+                }
+            }
+        }
+
         if (user && db) await deleteDoc(doc(db, 'invoices', id.toString()));
         else setInvoices(prev => prev.filter(i => i.id !== id));
     };
@@ -278,6 +405,14 @@ export function AppProvider({ children }) {
                 const totalPaid = paymentObj.amount + (invoice.paid || 0);
                 const newStatus = totalPaid >= invoice.total ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
                 setInvoices(prev => prev.map(i => i.id === paymentData.invoiceId ? { ...i, paid: totalPaid, status: newStatus } : i));
+                
+                // Generate payment received notification
+                const customer = customers.find(c => c.id === invoice.customerId);
+                addNotification({
+                    type: newStatus === 'paid' ? 'success' : 'info',
+                    title: newStatus === 'paid' ? 'Invoice Paid' : 'Payment Received',
+                    body: `${invoice.invoiceNo} received ${formatCurrency(paymentObj.amount, business.currencyCode || 'NPR')}${customer ? ` from ${customer.name}` : ''}`,
+                });
             }
         }
         return id;
@@ -305,6 +440,35 @@ export function AppProvider({ children }) {
                 }
             }
         }
+    };
+
+    // ── Notification Management ──────────────────────
+    const addNotification = (notificationData) => {
+        const id = Date.now().toString();
+        const notifObj = {
+            ...notificationData,
+            id,
+            read: false,
+            createdAt: new Date().toISOString(),
+        };
+        setNotifications(prev => [notifObj, ...prev]);
+        return id;
+    };
+
+    const markAsRead = (id) => {
+        setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    };
+
+    const markAllAsRead = () => {
+        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    };
+
+    const deleteNotification = (id) => {
+        setNotifications(prev => prev.filter(n => n.id !== id));
+    };
+
+    const clearAllNotifications = () => {
+        setNotifications([]);
     };
 
     // ── Helper: Calculate customer balance from payments ──
@@ -339,15 +503,44 @@ export function AppProvider({ children }) {
     const lowStockProducts = products.filter(p => p.stock <= p.minStock);
     const todayStr = new Date().toISOString().slice(0, 10);
     const totalSalesToday = invoices.filter(i => i.date === todayStr).reduce((s, i) => s + i.total, 0);
-    const pendingPayments = invoices.filter(i => i.status !== 'paid').reduce((s, i) => {
+    // Calculate pending payments - only for actual customers (not suppliers)
+    const pendingPayments = invoices.reduce((s, i) => {
+        // Find the customer associated with this invoice
+        const customer = customers.find(c => c.id === i.customerId);
+        // Only count if it's an actual customer (not a supplier)
+        if (!customer || customer.type !== 'customer') return s;
+        
         const invoicePayments = payments.filter(p => p.invoiceId === i.id);
         const totalPaid = invoicePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-        return s + (i.total - totalPaid);
+        const remaining = i.total - totalPaid;
+        // Only add positive balances (amounts customers owe)
+        return s + (remaining > 0 ? remaining : 0);
     }, 0);
 
+    // Log calculation details for verification
+    console.log('📊 Dashboard - Pending Payments Calculation:');
+    const pendingInvoices = invoices
+        .map(i => {
+            const customer = customers.find(c => c.id === i.customerId);
+            if (!customer || customer.type !== 'customer') return null;
+            const invoicePayments = payments.filter(p => p.invoiceId === i.id);
+            const totalPaid = invoicePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+            const remaining = i.total - totalPaid;
+            return remaining > 0 ? {
+                invoiceNo: i.invoiceNo,
+                customer: customer.name,
+                total: i.total,
+                paid: totalPaid,
+                remaining: remaining
+            } : null;
+        })
+        .filter(Boolean);
+    if (pendingInvoices.length > 0) console.table(pendingInvoices);
+    console.log('📊 Dashboard - Total Pending Payments:', pendingPayments);
+
     // Currency helper bound to current business currency
-    const currency = (amount) => formatCurrency(amount, business.currencyCode);
-    const currencySymbol = CURRENCIES.find(c => c.code === business.currencyCode)?.symbol || 'Rs.';
+    const currency = (amount) => formatCurrency(amount, business.currencyCode || 'NPR');
+    const currencySymbol = CURRENCIES.find(c => c.code === (business.currencyCode || 'NPR'))?.symbol || 'Rs.';
 
     return (
         <AppContext.Provider value={{
@@ -361,6 +554,7 @@ export function AppProvider({ children }) {
             customers, addCustomer, updateCustomer, deleteCustomer,
             invoices, addInvoice, updateInvoice, deleteInvoice,
             payments, addPayment, updatePayment, deletePayment,
+            notifications, addNotification, markAsRead, markAllAsRead, deleteNotification, clearAllNotifications,
             // Computed
             lowStockProducts, totalSalesToday, pendingPayments,
             // Currency & Date formatting

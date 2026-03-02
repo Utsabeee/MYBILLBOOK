@@ -1,7 +1,7 @@
 // =====================================================
 // Billing.jsx — Invoice Management Module (Global)
 // =====================================================
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { useApp } from '../context/AppContext';
 import {
@@ -15,7 +15,7 @@ import PaymentModal from '../components/PaymentModal';
 
 const STATUS_CFG = {
     paid: { cls: 'badge-success', label: 'Paid', icon: CheckCircle },
-    unpaid: { cls: 'badge-danger', label: 'Unpaid', icon: AlertCircle },
+    unpaid: { cls: 'badge-danger', label: 'Due', icon: AlertCircle },
     partial: { cls: 'badge-warning', label: 'Partial', icon: Clock },
 };
 
@@ -85,9 +85,11 @@ function InvoiceFormModal({ invoice, onClose, onSave }) {
     );
 
     const handleSave = () => {
-        if (!form.customerId || !form.customer) { toast.error('Please select a customer'); return; }
+        const selectedCustomer = customers.find(c => String(c.id) === String(form.customerId));
+        const customerName = form.customer || selectedCustomer?.name || '';
+        if (!form.customerId || !customerName) { toast.error('Please select a customer'); return; }
         if (form.items.length === 0) { toast.error('Please add at least one product'); return; }
-        onSave({ ...form, subtotal, taxAmount, total });
+        onSave({ ...form, customer: customerName, subtotal, taxAmount, total });
         onClose();
         toast.success(invoice ? 'Invoice updated!' : 'Invoice created!');
     };
@@ -109,9 +111,10 @@ function InvoiceFormModal({ invoice, onClose, onSave }) {
                         </div>
                         <div className="form-group">
                             <label className="form-label">Customer</label>
-                            <select className="form-select" value={form.customerId} onChange={e => {
-                                const c = customers.find(x => x.id === e.target.value);
-                                update('customerId', e.target.value);
+                            <select className="form-select" value={String(form.customerId || '')} onChange={e => {
+                                const selectedId = e.target.value;
+                                const c = customers.find(x => String(x.id) === selectedId);
+                                update('customerId', selectedId);
                                 update('customer', c ? c.name : '');
                             }}>
                                 <option value="">-- Select Customer --</option>
@@ -288,7 +291,7 @@ function InvoiceFormModal({ invoice, onClose, onSave }) {
 
 // ── Main Billing Page ──
 export default function Billing() {
-    const { invoices, addInvoice, updateInvoice, deleteInvoice, business, currency } = useApp();
+    const { invoices, payments, addInvoice, updateInvoice, deleteInvoice, business, currency } = useApp();
     const [showForm, setShowForm] = useState(false);
     const [editInvoice, setEditInvoice] = useState(null);
     const [previewInvoice, setPreviewInvoice] = useState(null);
@@ -296,15 +299,33 @@ export default function Billing() {
     const [search, setSearch] = useState('');
     const [filterStatus, setFilterStatus] = useState('all');
 
+    const paidByInvoiceId = useMemo(() => {
+        const map = new Map();
+        payments.forEach((payment) => {
+            map.set(payment.invoiceId, (map.get(payment.invoiceId) || 0) + (payment.amount || 0));
+        });
+        return map;
+    }, [payments]);
+
+    const getInvoicePaid = (invoice) => paidByInvoiceId.get(invoice.id) ?? (invoice.paid || 0);
+
+    const getInvoiceStatus = (invoice) => {
+        const paidAmount = getInvoicePaid(invoice);
+        const balanceAmount = (invoice.total || 0) - paidAmount;
+        if (balanceAmount <= 0) return 'paid';
+        if (paidAmount > 0) return 'partial';
+        return 'unpaid';
+    };
+
     const filtered = invoices.filter(inv => {
         const matchSearch = (inv.customer || '').toLowerCase().includes(search.toLowerCase()) ||
             (inv.invoiceNo || '').toLowerCase().includes(search.toLowerCase());
-        const matchStatus = filterStatus === 'all' || inv.status === filterStatus;
+        const matchStatus = filterStatus === 'all' || getInvoiceStatus(inv) === filterStatus;
         return matchSearch && matchStatus;
     }).sort((a, b) => new Date(b.date) - new Date(a.date));
 
     const totalRevenue = invoices.reduce((s, i) => s + i.total, 0);
-    const totalPaid = invoices.reduce((s, i) => s + i.paid, 0);
+    const totalPaid = invoices.reduce((s, i) => s + getInvoicePaid(i), 0);
     const totalPending = totalRevenue - totalPaid;
 
     const handleSave = (data) => {
@@ -325,7 +346,7 @@ export default function Billing() {
                 ].map(s => (
                     <div key={s.label} className={`stat-card ${s.cls}`}>
                         <div className="stat-label">{s.label}</div>
-                        <div className="stat-value" style={{ fontSize: '1.4rem' }}>{s.value}</div>
+                        <div className="stat-value stat-value-amount" style={{ fontSize: '1.4rem' }}>{s.value}</div>
                     </div>
                 ))}
             </div>
@@ -345,7 +366,7 @@ export default function Billing() {
                                 onClick={() => setFilterStatus(s)}>
                                 {s.charAt(0).toUpperCase() + s.slice(1)}
                                 <span style={{ marginLeft: 4, fontWeight: 400, color: filterStatus === s ? '#9ca3af' : '#d1d5db' }}>
-                                    ({invoices.filter(i => s === 'all' || i.status === s).length})
+                                    ({invoices.filter(i => s === 'all' || getInvoiceStatus(i) === s).length})
                                 </span>
                             </button>
                         ))}
@@ -375,17 +396,19 @@ export default function Billing() {
                                     <th>Date</th>
                                     <th>Customer</th>
                                     <th>Items</th>
-                                    <th>Total</th>
-                                    <th>Paid</th>
-                                    <th>Balance</th>
+                                    <th className="align-right">Total</th>
+                                    <th className="align-right">Paid</th>
+                                    <th className="align-right">Balance</th>
                                     <th>Status</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {filtered.map(inv => {
-                                    const cfg = STATUS_CFG[inv.status];
-                                    const balance = inv.total - inv.paid;
+                                    const paidAmount = getInvoicePaid(inv);
+                                    const resolvedStatus = getInvoiceStatus(inv);
+                                    const cfg = STATUS_CFG[resolvedStatus];
+                                    const balance = Math.max(0, (inv.total || 0) - paidAmount);
                                     return (
                                         <tr key={inv.id}>
                                             <td>
@@ -395,9 +418,9 @@ export default function Billing() {
                                             <td style={{ color: '#6b7280', fontSize: '0.82rem' }}>{inv.date}</td>
                                             <td style={{ fontWeight: 600, color: '#1f2937' }}>{inv.customer || 'Unknown'}</td>
                                             <td style={{ color: '#6b7280', fontSize: '0.82rem' }}>{inv.items?.length || 0} item{inv.items?.length !== 1 ? 's' : ''}</td>
-                                            <td style={{ fontWeight: 700 }}>{currency(inv.total)}</td>
-                                            <td style={{ fontWeight: 600, color: '#16a34a' }}>{currency(inv.paid)}</td>
-                                            <td style={{ fontWeight: 600, color: balance > 0 ? '#dc2626' : '#16a34a' }}>
+                                            <td className="align-right billing-amount-cell">{currency(inv.total)}</td>
+                                            <td className="align-right billing-amount-cell billing-paid-cell">{currency(paidAmount)}</td>
+                                            <td className={`align-right billing-amount-cell ${balance > 0 ? 'billing-due-cell' : 'billing-clear-cell'}`}>
                                                 {balance > 0 ? currency(balance) : '—'}
                                             </td>
                                             <td><span className={`badge ${cfg.cls}`}>{cfg.label}</span></td>

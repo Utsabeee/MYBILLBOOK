@@ -1,7 +1,7 @@
 // =====================================================
 // Reports.jsx — Analytics & Reports Module
 // =====================================================
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import {
     Download, BarChart3, TrendingUp, FileText, Filter,
@@ -34,9 +34,36 @@ const CustomTooltip = ({ active, payload, label, currency }) => {
 };
 
 export default function Reports() {
-    const { products, invoices, business, currency } = useApp();
+    const { products, invoices, customers, payments, business, currency, getCustomerBalance } = useApp();
     const [period, setPeriod] = useState('6m');
     const [reportType, setReportType] = useState('sales');
+
+    const paidByInvoiceId = useMemo(() => {
+        const map = new Map();
+        payments.forEach((payment) => {
+            map.set(payment.invoiceId, (map.get(payment.invoiceId) || 0) + (payment.amount || 0));
+        });
+        return map;
+    }, [payments]);
+
+    const outstandingDue = useMemo(() =>
+        invoices.reduce((sum, invoice) => {
+            const paidAmount = paidByInvoiceId.get(invoice.id) ?? (invoice.paid || 0);
+            return sum + Math.max(0, (invoice.total || 0) - paidAmount);
+        }, 0),
+    [invoices, paidByInvoiceId]);
+
+    const customerDueRows = useMemo(() =>
+        customers
+            .filter((customer) => customer.type === 'customer')
+            .map((customer) => {
+                const dueAmount = getCustomerBalance(customer.id);
+                const invoiceCount = invoices.filter((invoice) => invoice.customerId === customer.id).length;
+                return { id: customer.id, name: customer.name, dueAmount, invoiceCount };
+            })
+            .filter((row) => row.dueAmount > 0)
+            .sort((a, b) => b.dueAmount - a.dueAmount),
+    [customers, invoices, getCustomerBalance]);
 
     // ── DATA COMPUTATION ────────────────────────────
 
@@ -100,7 +127,7 @@ export default function Reports() {
         return [
             { name: 'Paid', value: Math.round((stats.paid / total) * 100), color: '#22c55e' },
             { name: 'Partial', value: Math.round((stats.partial / total) * 100), color: '#f59e0b' },
-            { name: 'Unpaid', value: Math.round((stats.unpaid / total) * 100), color: '#ef4444' },
+            { name: 'Due', value: Math.round((stats.unpaid / total) * 100), color: '#ef4444' },
         ];
     };
     const paymentStatus = getPaymentStatus();
@@ -169,6 +196,11 @@ export default function Reports() {
                         change: '+0.0%', up: true, cls: 'purple',
                     },
                     {
+                        label: 'Outstanding Due',
+                        value: currency(outstandingDue),
+                        change: `${customerDueRows.length} customer(s)`, up: outstandingDue === 0, cls: 'orange',
+                    },
+                    {
                         label: 'Cumulative Profit',
                         value: currency(totalProfit),
                         change: '+28.5%', up: true, cls: 'teal',
@@ -176,7 +208,7 @@ export default function Reports() {
                 ].map(s => (
                     <div key={s.label} className={`stat-card ${s.cls}`}>
                         <div className="stat-label">{s.label}</div>
-                        <div className="stat-value" style={{ fontSize: '1.3rem', marginTop: 4 }}>{s.value}</div>
+                        <div className="stat-value stat-value-amount" style={{ fontSize: '1.3rem', marginTop: 4 }}>{s.value}</div>
                         <span className={`stat-change ${s.up ? 'up' : 'down'}`} style={{ width: 'fit-content', marginTop: 4 }}>
                             {s.up ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />} {s.change}
                         </span>
@@ -279,13 +311,13 @@ export default function Reports() {
                                 <thead>
                                     <tr>
                                         <th>Month</th>
-                                        <th>Sales</th>
-                                        <th>Purchases</th>
-                                        <th>Expenses</th>
-                                        <th>Net Profit</th>
-                                        <th>Invoices</th>
-                                        <th>GST Collected</th>
-                                        <th>Margin</th>
+                                        <th className="align-right">Sales</th>
+                                        <th className="align-right">Purchases</th>
+                                        <th className="align-right">Expenses</th>
+                                        <th className="align-right">Net Profit</th>
+                                        <th className="align-right">Invoices</th>
+                                        <th className="align-right">GST Collected</th>
+                                        <th className="align-right">Margin</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -294,18 +326,18 @@ export default function Reports() {
                                         return (
                                             <tr key={row.month}>
                                                 <td style={{ fontWeight: 700, color: '#1f2937' }}>{row.month}</td>
-                                                <td style={{ fontWeight: 600, color: '#2563eb' }}>{currency(row.sales)}</td>
-                                                <td>{currency(row.purchases)}</td>
-                                                <td style={{ color: '#dc2626' }}>{currency(row.expenses)}</td>
-                                                <td style={{ fontWeight: 700, color: '#16a34a' }}>{currency(row.profit)}</td>
-                                                <td>{row.invoices}</td>
-                                                <td style={{ color: '#7c3aed' }}>{currency(row.gst)}</td>
-                                                <td>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                        <div style={{ flex: 1, height: 6, background: '#f1f5f9', borderRadius: 3, minWidth: 60, overflow: 'hidden' }}>
+                                                <td className="amount-cell" style={{ fontWeight: 600, color: '#2563eb' }}>{currency(row.sales)}</td>
+                                                <td className="amount-cell">{currency(row.purchases)}</td>
+                                                <td className="amount-cell" style={{ color: '#dc2626' }}>{currency(row.expenses)}</td>
+                                                <td className="amount-cell" style={{ fontWeight: 700, color: '#16a34a' }}>{currency(row.profit)}</td>
+                                                <td className="amount-cell">{row.invoices}</td>
+                                                <td className="amount-cell" style={{ color: '#7c3aed' }}>{currency(row.gst)}</td>
+                                                <td style={{ textAlign: 'right' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+                                                        <div style={{ flex: 0, height: 6, background: '#f1f5f9', borderRadius: 3, width: 60, overflow: 'hidden' }}>
                                                             <div style={{ height: '100%', background: '#22c55e', borderRadius: 3, width: `${margin}%` }} />
                                                         </div>
-                                                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#16a34a' }}>{margin}%</span>
+                                                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#16a34a', minWidth: '42px' }}>{margin}%</span>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -313,6 +345,37 @@ export default function Reports() {
                                     })}
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+
+                    <div className="card">
+                        <div className="card-header"><span className="card-title">Customer Outstanding Dues</span></div>
+                        <div className="table-wrapper" style={{ borderRadius: 0, border: 'none' }}>
+                            {customerDueRows.length === 0 ? (
+                                <div className="empty-state">
+                                    <h3>No outstanding dues</h3>
+                                    <p>All customer invoices are fully paid.</p>
+                                </div>
+                            ) : (
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Customer</th>
+                                            <th className="align-right">Open Invoices</th>
+                                            <th className="align-right">Due Amount</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {customerDueRows.map((row) => (
+                                            <tr key={row.id}>
+                                                <td style={{ fontWeight: 600, color: '#1f2937' }}>{row.name}</td>
+                                                <td className="amount-cell">{row.invoiceCount}</td>
+                                                <td className="amount-cell reports-due-cell">{currency(row.dueAmount)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -376,7 +439,7 @@ export default function Reports() {
                                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 12px', background: '#f8fafc', borderRadius: 6, fontWeight: 800, marginTop: 4 }}>
                                         <span>Total {section.label.split(' ')[0]}</span>
                                         <span style={{ color: section.isIncome ? '#16a34a' : '#dc2626' }}>
-                                            {section.isIncome ? '' : '- '}{section.total.toLocaleString('en-IN')}
+                                            {section.isIncome ? '' : '- '}{currency(section.total)}
                                         </span>
                                     </div>
                                 </div>
@@ -416,12 +479,12 @@ export default function Reports() {
                                 <table>
                                     <thead>
                                         <tr>
-                                            <th>GST Rate</th>
-                                            <th>Taxable Amount</th>
-                                            <th>CGST</th>
-                                            <th>SGST</th>
-                                            <th>IGST</th>
-                                            <th>Total Tax</th>
+                                            <th style={{ textAlign: 'center' }}>GST Rate</th>
+                                            <th className="align-right">Taxable Amount</th>
+                                            <th className="align-right">CGST</th>
+                                            <th className="align-right">SGST</th>
+                                            <th className="align-right">IGST</th>
+                                            <th className="align-right">Total Tax</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -433,12 +496,12 @@ export default function Reports() {
                                             { rate: '28%', taxable: 1200, cgst: 168, sgst: 168, igst: 0 },
                                         ].map(row => (
                                             <tr key={row.rate}>
-                                                <td style={{ fontWeight: 700 }}>{row.rate}</td>
-                                                <td>{currency(row.taxable)}</td>
-                                                <td>{currency(row.cgst)}</td>
-                                                <td>{currency(row.sgst)}</td>
-                                                <td>{currency(row.igst)}</td>
-                                                <td style={{ fontWeight: 700, color: '#7c3aed' }}>{currency(row.cgst + row.sgst + row.igst)}</td>
+                                                <td style={{ fontWeight: 700, textAlign: 'center' }}>{row.rate}</td>
+                                                <td className="amount-cell">{currency(row.taxable)}</td>
+                                                <td className="amount-cell">{currency(row.cgst)}</td>
+                                                <td className="amount-cell">{currency(row.sgst)}</td>
+                                                <td className="amount-cell">{currency(row.igst)}</td>
+                                                <td className="amount-cell" style={{ fontWeight: 700, color: '#7c3aed' }}>{currency(row.cgst + row.sgst + row.igst)}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -461,31 +524,31 @@ export default function Reports() {
                             <thead>
                                 <tr>
                                     <th>Product Name</th>
-                                    <th>Category</th>
-                                    <th>Current Stock</th>
-                                    <th>Unit</th>
-                                    <th>Purchase Price</th>
-                                    <th>Sale Price</th>
-                                    <th>Stock Value</th>
-                                    <th>Potential Revenue</th>
-                                    <th>Status</th>
+                                    <th style={{ textAlign: 'center' }}>Category</th>
+                                    <th className="align-right">Current Stock</th>
+                                    <th style={{ textAlign: 'center' }}>Unit</th>
+                                    <th className="align-right">Purchase Price</th>
+                                    <th className="align-right">Sale Price</th>
+                                    <th className="align-right">Stock Value</th>
+                                    <th className="align-right">Potential Revenue</th>
+                                    <th style={{ textAlign: 'center' }}>Status</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {products.map(p => (
                                     <tr key={p.id}>
                                         <td style={{ fontWeight: 600 }}>{p.name}</td>
-                                        <td><span className="badge badge-gray">{p.category}</span></td>
-                                        <td style={{ fontWeight: 700, color: p.stock <= p.minStock ? '#dc2626' : '#1f2937' }}>{p.stock}</td>
-                                        <td style={{ color: '#6b7280', fontSize: '0.82rem' }}>{p.unit}</td>
-                                        <td>{currency(p.purchasePrice)}</td>
-                                        <td>{currency(p.salePrice)}</td>
-                                        <td style={{ fontWeight: 700 }}>{currency(p.stock * p.purchasePrice)}</td>
-                                        <td style={{ fontWeight: 700, color: '#16a34a' }}>{currency(p.stock * p.salePrice)}</td>
-                                        <td>
+                                        <td style={{ textAlign: 'center' }}><span className="badge badge-gray">{p.category}</span></td>
+                                        <td className="amount-cell" style={{ fontWeight: 700, color: p.stock <= p.minStock ? '#dc2626' : '#1f2937' }}>{p.stock}</td>
+                                        <td style={{ color: '#6b7280', fontSize: '0.82rem', textAlign: 'center' }}>{p.unit}</td>
+                                        <td className="amount-cell">{currency(p.purchasePrice)}</td>
+                                        <td className="amount-cell">{currency(p.salePrice)}</td>
+                                        <td className="amount-cell" style={{ fontWeight: 700 }}>{currency(p.stock * p.purchasePrice)}</td>
+                                        <td className="amount-cell" style={{ fontWeight: 700, color: '#16a34a' }}>{currency(p.stock * p.salePrice)}</td>
+                                        <td style={{ textAlign: 'center' }}>
                                             {p.stock === 0 ? <span className="badge badge-danger">Out of Stock</span> :
-                                                p.stock <= p.minStock ? <span className="badge badge-warning">Low Stock</span> :
-                                                    <span className="badge badge-success">In Stock</span>}
+                                                p.stock <= p.minStock ? <span className="badge badge-warning">LS</span> :
+                                                    <span className="badge badge-success">STK</span>}
                                         </td>
                                     </tr>
                                 ))}

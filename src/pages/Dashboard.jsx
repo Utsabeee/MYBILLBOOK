@@ -29,8 +29,11 @@ const CustomTooltip = ({ active, payload, label, currency }) => {
     );
 };
 
-export default function Dashboard({ onNavigate }) {
+export default function Dashboard({ onNavigate, onOpenLowStock }) {
     const { invoices, products, customers, lowStockProducts, pendingPayments, business, currency, user } = useApp();
+
+    // Log for verification
+    console.log('📊 Dashboard - Pending Payments:', pendingPayments);
 
     // ── DATA COMPUTATION ────────────────────────────
 
@@ -116,50 +119,45 @@ export default function Dashboard({ onNavigate }) {
 
     const statusConfig = {
         paid: { cls: 'badge-success', label: 'Paid' },
-        unpaid: { cls: 'badge-danger', label: 'Unpaid' },
+        unpaid: { cls: 'badge-danger', label: 'Due' },
         partial: { cls: 'badge-warning', label: 'Partial' },
     };
 
     return (
-        <div style={{ animation: 'fadeIn 0.4s ease' }}>
+        <div className="anim-fade-in dashboard-page">
             {/* Welcome Bar */}
-            <div style={{
-                background: 'linear-gradient(135deg, #1e40af 0%, #1d4ed8 40%, #0d9488 100%)',
-                borderRadius: 'var(--radius-lg)', padding: '20px 28px', marginBottom: 24,
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                boxShadow: '0 8px 24px rgba(37,99,235,0.25)', overflow: 'hidden', position: 'relative',
-            }}>
-                <div style={{ position: 'absolute', top: -20, right: -20, width: 120, height: 120, background: 'rgba(255,255,255,0.05)', borderRadius: '50%' }} />
-                <div style={{ position: 'absolute', bottom: -30, right: 120, width: 80, height: 80, background: 'rgba(255,255,255,0.05)', borderRadius: '50%' }} />
+            <div className="dashboard-welcome">
+                <div className="dashboard-welcome-orb orb-1" />
+                <div className="dashboard-welcome-orb orb-2" />
                 <div>
-                    <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', fontWeight: 500, marginBottom: 4 }}>
+                    <div className="dashboard-welcome-sub">
                         Welcome back, {user?.displayName || (business?.name?.split(' ')[0] || 'Friend')} 👋
                     </div>
-                    <div style={{ color: 'white', fontSize: '1.25rem', fontWeight: 800, fontFamily: 'Poppins,sans-serif' }}>
+                    <div className="dashboard-welcome-title">
                         This Month's Revenue: {currency(totalRevMonth)}
                     </div>
-                    <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem', marginTop: 4 }}>
+                    <div className="dashboard-welcome-growth">
                         📈 {revGrowth}% growth vs last month — Great work!
                     </div>
                 </div>
-                <button className="btn" onClick={() => onNavigate('billing')} style={{ background: 'rgba(255,255,255,0.15)', color: 'white', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 10, backdropFilter: 'blur(4px)', flexShrink: 0 }}>
+                <button className="btn dashboard-welcome-btn" onClick={() => onNavigate('billing')}>
                     + New Invoice
                 </button>
             </div>
 
             {/* Stats Grid */}
-            <div className="stats-grid" style={{ marginBottom: 24 }}>
+            <div className="stats-grid section-space-24">
                 <div className="stat-card blue">
                     <div className="stat-card-header">
                         <div>
                             <div className="stat-label">Monthly Revenue</div>
-                            <div className="stat-value">{currency(totalRevMonth)}</div>
+                            <div className="stat-value stat-value-amount">{currency(totalRevMonth)}</div>
                         </div>
                         <div className="stat-icon blue"><DollarSign size={22} /></div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div className="stat-foot-row">
                         <span className="stat-change up"><ArrowUpRight size={12} /> {revGrowth}%</span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>vs last month</span>
+                        <span className="stat-foot-note">vs last month</span>
                     </div>
                 </div>
 
@@ -167,13 +165,13 @@ export default function Dashboard({ onNavigate }) {
                     <div className="stat-card-header">
                         <div>
                             <div className="stat-label">Sales Today</div>
-                            <div className="stat-value">{currency(salesToday)}</div>
+                            <div className="stat-value stat-value-amount">{currency(salesToday)}</div>
                         </div>
                         <div className="stat-icon green"><TrendingUp size={22} /></div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div className="stat-foot-row">
                         <span className="stat-change up"><ArrowUpRight size={12} /> 8.4%</span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>vs yesterday</span>
+                        <span className="stat-foot-note">vs yesterday</span>
                     </div>
                 </div>
 
@@ -181,13 +179,13 @@ export default function Dashboard({ onNavigate }) {
                     <div className="stat-card-header">
                         <div>
                             <div className="stat-label">Pending Payments</div>
-                            <div className="stat-value">{currency(pendingPayments)}</div>
+                            <div className="stat-value stat-value-amount">{currency(pendingPayments)}</div>
                         </div>
                         <div className="stat-icon orange"><Clock size={22} /></div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div className="stat-foot-row">
                         <span className="stat-change down"><ArrowDownRight size={12} /> {pendingCount} invoices</span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>overdue</span>
+                        <span className="stat-foot-note">overdue</span>
                     </div>
                 </div>
 
@@ -195,13 +193,13 @@ export default function Dashboard({ onNavigate }) {
                     <div className="stat-card-header">
                         <div>
                             <div className="stat-label">Total Invoices</div>
-                            <div className="stat-value">{invoices.length}</div>
+                            <div className="stat-value stat-value-amount">{invoices.length}</div>
                         </div>
                         <div className="stat-icon purple"><FileText size={22} /></div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div className="stat-foot-row">
                         <span className="stat-change up"><CheckCircle size={12} /> {paidInvoices} paid</span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{pendingCount} pending</span>
+                        <span className="stat-foot-note">{pendingCount} pending</span>
                     </div>
                 </div>
 
@@ -209,13 +207,13 @@ export default function Dashboard({ onNavigate }) {
                     <div className="stat-card-header">
                         <div>
                             <div className="stat-label">Products</div>
-                            <div className="stat-value">{products.length}</div>
+                            <div className="stat-value stat-value-amount">{products.length}</div>
                         </div>
                         <div className="stat-icon teal"><Package size={22} /></div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div className="stat-foot-row">
                         {lowStockProducts.length > 0 ? (
-                            <span className="stat-change down"><AlertTriangle size={12} /> {lowStockProducts.length} low stock</span>
+                            <span className="stat-change down"><AlertTriangle size={12} /> {lowStockProducts.length} LS</span>
                         ) : (
                             <span className="stat-change up"><CheckCircle size={12} /> All stocked</span>
                         )}
@@ -226,25 +224,25 @@ export default function Dashboard({ onNavigate }) {
                     <div className="stat-card-header">
                         <div>
                             <div className="stat-label">Customers</div>
-                            <div className="stat-value">{customers.filter(c => c.type !== 'supplier').length}</div>
+                            <div className="stat-value stat-value-amount">{customers.filter(c => c.type !== 'supplier').length}</div>
                         </div>
                         <div className="stat-icon red"><Users size={22} /></div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div className="stat-foot-row">
                         <span className="stat-change up"><ArrowUpRight size={12} /> 2 new</span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>this month</span>
+                        <span className="stat-foot-note">this month</span>
                     </div>
                 </div>
             </div>
 
             {/* Charts Row */}
-            <div className="grid-2" style={{ marginBottom: 24 }}>
+            <div className="grid-2 section-space-24">
                 <div className="card">
                     <div className="card-header">
                         <span className="card-title">Revenue vs Expenses</span>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Last 6 months</span>
+                        <span className="card-subtle">Last 6 months</span>
                     </div>
-                    <div style={{ padding: '16px 8px' }}>
+                    <div className="chart-body-pad">
                         <ResponsiveContainer width="100%" height={220}>
                             <AreaChart data={monthlyData}>
                                 <defs>
@@ -273,7 +271,7 @@ export default function Dashboard({ onNavigate }) {
                     <div className="card-header">
                         <span className="card-title">Daily Sales — This Week</span>
                     </div>
-                    <div style={{ padding: '16px 8px' }}>
+                    <div className="chart-body-pad">
                         <ResponsiveContainer width="100%" height={220}>
                             <BarChart data={dailyData} barSize={28}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -293,32 +291,30 @@ export default function Dashboard({ onNavigate }) {
             </div>
 
             {/* Bottom Row */}
-            <div className="grid-2" style={{ marginBottom: 24 }}>
+            <div className="grid-2 section-space-24">
                 {/* Recent Transactions */}
                 <div className="card">
                     <div className="card-header">
                         <span className="card-title">Recent Transactions</span>
-                        <button className="btn btn-ghost btn-sm" onClick={() => onNavigate('billing')} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <button className="btn btn-ghost btn-sm dashboard-inline-btn" onClick={() => onNavigate('billing')}>
                             <Eye size={14} /> View All
                         </button>
                     </div>
-                    <div style={{ overflow: 'hidden' }}>
+                    <div className="dashboard-recent-list-wrap">
                         {recentInvoices.map((inv, i) => {
                             const cfg = statusConfig[inv.status];
                             return (
-                                <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', borderBottom: i < recentInvoices.length - 1 ? '1px solid #f1f5f9' : 'none', transition: 'background 0.15s', cursor: 'pointer' }}
-                                    onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-                                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                                    <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg,#eff6ff,#dbeafe)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                <div key={inv.id} className={`dashboard-recent-row ${i < recentInvoices.length - 1 ? 'with-border' : ''}`}>
+                                    <div className="dashboard-recent-icon">
                                         <FileText size={16} color="#3b82f6" />
                                     </div>
-                                    <div style={{ flex: 1, overflow: 'hidden' }}>
-                                        <div style={{ fontWeight: 600, fontSize: '0.84rem', color: '#1f2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inv.customer || 'Unknown'}</div>
-                                        <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{inv.invoiceNo} · {inv.date}</div>
+                                    <div className="dashboard-recent-meta">
+                                        <div className="dashboard-recent-name">{inv.customer || 'Unknown'}</div>
+                                        <div className="dashboard-recent-sub">{inv.invoiceNo} · {inv.date}</div>
                                     </div>
-                                    <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1f2937' }}>{currency(inv.total)}</div>
-                                        <span className={`badge ${cfg.cls}`} style={{ marginTop: 2 }}>{cfg.label}</span>
+                                    <div className="dashboard-recent-amount-wrap">
+                                        <div className="dashboard-recent-amount">{currency(inv.total)}</div>
+                                        <span className={`badge ${cfg.cls} dashboard-recent-badge`}>{cfg.label}</span>
                                     </div>
                                 </div>
                             );
@@ -326,13 +322,13 @@ export default function Dashboard({ onNavigate }) {
                     </div>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <div className="dashboard-side-stack">
                     {/* Category Distribution */}
-                    <div className="card" style={{ flex: 1 }}>
+                    <div className="card dashboard-flex-fill">
                         <div className="card-header">
                             <span className="card-title">Sales by Category</span>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px' }}>
+                        <div className="dashboard-category-wrap">
                             <ResponsiveContainer width="50%" height={140}>
                                 <PieChart>
                                     <Pie data={categoryData} cx="50%" cy="50%" innerRadius={40} outerRadius={60} dataKey="value" paddingAngle={3}>
@@ -342,15 +338,15 @@ export default function Dashboard({ onNavigate }) {
                                     </Pie>
                                 </PieChart>
                             </ResponsiveContainer>
-                            <div style={{ flex: 1 }}>
+                            <div className="dashboard-category-list">
                                 {categoryData.length > 0 ? categoryData.map(c => (
-                                    <div key={c.name} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, flexShrink: 0 }} />
-                                        <span style={{ fontSize: '0.75rem', color: '#374151', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
-                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1f2937' }}>{c.value}%</span>
+                                    <div key={c.name} className="dashboard-category-item">
+                                        <div className="dashboard-category-dot" style={{ background: c.color }} />
+                                        <span className="dashboard-category-name">{c.name}</span>
+                                        <span className="dashboard-category-val">{c.value}%</span>
                                     </div>
                                 )) : (
-                                    <div style={{ fontSize: '0.75rem', color: '#9ca3af', fontStyle: 'italic' }}>Add products to see data</div>
+                                    <div className="dashboard-empty-subtle">Add products to see data</div>
                                 )}
                             </div>
                         </div>
@@ -358,20 +354,23 @@ export default function Dashboard({ onNavigate }) {
 
                     {/* Low Stock Alert */}
                     {lowStockProducts.length > 0 && (
-                        <div className="card" style={{ border: '1px solid #fee2e2' }}>
-                            <div className="card-header" style={{ background: '#fef2f2', borderBottom: '1px solid #fee2e2' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div className="card dashboard-lowstock-card dashboard-lowstock-clickable" onClick={() => onOpenLowStock?.()} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpenLowStock?.(); }}>
+                            <div className="card-header dashboard-lowstock-header">
+                                <div className="dashboard-lowstock-title-wrap">
                                     <AlertTriangle size={16} color="#dc2626" />
-                                    <span className="card-title" style={{ color: '#dc2626' }}>Low Stock Alert</span>
+                                    <div>
+                                        <span className="card-title dashboard-lowstock-title">LS Alert</span>
+                                        <div className="dashboard-lowstock-subtitle">{lowStockProducts.length} items need restocking</div>
+                                    </div>
                                 </div>
-                                <button className="btn btn-ghost btn-sm" onClick={() => onNavigate('inventory')} style={{ fontSize: '0.75rem' }}>Fix Now</button>
+                                <button className="btn btn-ghost btn-sm dashboard-lowstock-btn" onClick={(e) => { e.stopPropagation(); onNavigate('inventory'); }}>Fix Now</button>
                             </div>
-                            <div style={{ padding: '8px 0' }}>
+                            <div className="dashboard-lowstock-list">
                                 {lowStockProducts.slice(0, 3).map(p => (
-                                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 16px' }}>
-                                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: p.stock === 0 ? '#ef4444' : '#f59e0b', flexShrink: 0 }} />
-                                        <span style={{ flex: 1, fontSize: '0.8rem', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-                                        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: p.stock === 0 ? '#dc2626' : '#d97706' }}>{p.stock} {p.unit}</span>
+                                    <div key={p.id} className="dashboard-lowstock-row">
+                                        <div className="dashboard-lowstock-dot" style={{ background: p.stock === 0 ? '#ef4444' : '#f59e0b' }} />
+                                        <span className="dashboard-lowstock-name">{p.name}</span>
+                                        <span className="dashboard-lowstock-value" style={{ color: p.stock === 0 ? '#dc2626' : '#d97706' }}>{p.stock} {p.unit}</span>
                                     </div>
                                 ))}
                             </div>
@@ -386,15 +385,15 @@ export default function Dashboard({ onNavigate }) {
                     <span className="card-title">Top Selling Products</span>
                     <button className="btn btn-ghost btn-sm" onClick={() => onNavigate('inventory')}>View Inventory</button>
                 </div>
-                <div className="table-wrapper" style={{ borderRadius: 0, border: 'none' }}>
+                <div className="table-wrapper table-flat">
                     <table>
                         <thead>
                             <tr>
                                 <th>#</th>
                                 <th>Product Name</th>
-                                <th>Units Sold</th>
-                                <th>Revenue</th>
-                                <th>Trend</th>
+                                <th className="align-right">Units Sold</th>
+                                <th className="align-right">Revenue</th>
+                                <th className="align-right">Trend</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -409,9 +408,9 @@ export default function Dashboard({ onNavigate }) {
                                             <span style={{ fontWeight: 600, color: '#1f2937' }}>{p.name}</span>
                                         </div>
                                     </td>
-                                    <td style={{ color: '#374151', fontWeight: 500 }}>{p.qty} units</td>
-                                    <td style={{ fontWeight: 700, color: '#1f2937' }}>{currency(p.sales)}</td>
-                                    <td>
+                                    <td className="amount-cell" style={{ color: '#374151', fontWeight: 500 }}>{p.qty} units</td>
+                                    <td className="amount-cell" style={{ fontWeight: 700, color: '#1f2937' }}>{currency(p.sales)}</td>
+                                    <td className="amount-cell">
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                             <div style={{ flex: 1, height: 6, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden', minWidth: 80 }}>
                                                 <div style={{ height: '100%', borderRadius: 4, background: 'linear-gradient(90deg,#3b82f6,#14b8a6)', width: `${Math.round((p.sales / topProducts[0].sales) * 100)}%` }} />

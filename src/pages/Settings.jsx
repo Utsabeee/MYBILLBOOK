@@ -5,10 +5,12 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { useApp } from '../context/AppContext';
 import { CURRENCIES, DATE_FORMATS } from '../constants';
+import { MOCK_CUSTOMERS, MOCK_PRODUCTS, generateSampleInvoices } from '../utils/mockData';
+import FirebaseDebugStatus from '../components/FirebaseDebugStatus';
 import {
     Building2, FileText, Receipt, Users, Database,
     Save, Upload, CheckCircle, Info,
-    Shield, Bell, Percent,
+    Shield, Bell, Percent, Trash2, TestTube,
 } from 'lucide-react';
 
 const INVOICE_COLORS = [
@@ -61,7 +63,7 @@ function ToggleSetting({ label, desc, value, onChange }) {
 }
 
 export default function Settings() {
-    const { business, updateBusiness } = useApp();
+    const { business, updateBusiness, addCustomer, addProduct, addInvoice, customers, products, resetToSampleData } = useApp();
     const [notifs, setNotifs] = useState({
         lowStock: true, paymentReminders: true, dailyReport: false, monthlyReport: true,
     });
@@ -69,6 +71,7 @@ export default function Settings() {
         showLogo: true, showTax: true, showBankDetails: false,
         autoNumber: true, termsAndConds: 'Payment due within 30 days of invoice date. Thank you for your business.',
     });
+    const [loadingMockData, setLoadingMockData] = useState(false);
 
     const handleSave = () => {
         toast.success('Settings synced to cloud successfully!');
@@ -88,6 +91,58 @@ export default function Settings() {
         a.click();
         URL.revokeObjectURL(url);
         toast.success('Settings backup downloaded!');
+    };
+
+    const handleLoadMockData = async () => {
+        if (loadingMockData) return;
+        
+        if (customers.length > 0 || products.length > 0) {
+            toast.error('❌ Clear existing data first!');
+            return;
+        }
+
+        setLoadingMockData(true);
+        try {
+            // Add customers (with IDs for invoice references)
+            const customersWithIds = [];
+            for (const customer of MOCK_CUSTOMERS) {
+                const custWithId = { ...customer, id: String(Date.now() + Math.random()) };
+                customersWithIds.push(custWithId);
+                await addCustomer(custWithId);
+            }
+            
+            // Add products (with IDs for invoice references)
+            const productsWithIds = [];
+            for (const product of MOCK_PRODUCTS) {
+                const prodWithId = { ...product, id: String(Date.now() + Math.random()) };
+                productsWithIds.push(prodWithId);
+                await addProduct(prodWithId);
+            }
+            
+            // Generate and add sample invoices
+            const sampleInvoices = generateSampleInvoices(customersWithIds, productsWithIds);
+            for (const invoice of sampleInvoices) {
+                try {
+                    await addInvoice(invoice);
+                } catch (e) {
+                    console.warn('Invoice add skipped:', e.message);
+                }
+            }
+            
+            toast.success('✅ Mock data loaded! 10 customers, 30 products & sample invoices added');
+        } catch (error) {
+            console.error('Error loading mock data:', error);
+            toast.error('Failed to load mock data: ' + error.message);
+        } finally {
+            setLoadingMockData(false);
+        }
+    };
+
+    const handleClearMockData = () => {
+        if (confirm('⚠️ Delete ALL customers, products, and invoices? This cannot be undone!')) {
+            resetToSampleData();
+            toast.success('✅ All data cleared!');
+        }
     };
 
     return (
@@ -266,7 +321,7 @@ export default function Settings() {
             {/* ── Notifications ── */}
             <SettingSection title="Notifications" icon={Bell}>
                 {[
-                    { key: 'lowStock', label: 'Low Stock Alerts', desc: 'Notify when stock falls below minimum level' },
+                    { key: 'lowStock', label: 'LS Alerts', desc: 'Notify when stock falls below minimum level' },
                     { key: 'paymentReminders', label: 'Payment Reminders', desc: 'Remind customers about overdue invoices' },
                     { key: 'dailyReport', label: 'Daily Sales Summary', desc: 'Daily business summary at end of day' },
                     { key: 'monthlyReport', label: 'Monthly Report', desc: 'Monthly P&L report on 1st of each month' },
@@ -301,6 +356,49 @@ export default function Settings() {
                     <Users size={14} /> Invite Team Member
                 </button>
             </SettingSection>
+
+            {/* ── Test Data ── */}
+            <SettingSection title="Test Data (Development)" icon={TestTube}>
+                <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 10, padding: '12px 16px', display: 'flex', gap: 10, marginBottom: 16 }}>
+                    <TestTube size={18} color="#92400e" style={{ flexShrink: 0 }} />
+                    <p style={{ fontSize: '0.8rem', color: '#78350f', margin: 0 }}>
+                        Load 10 sample customers & 30 products across all categories to test the app. Delete them later when testing is complete.
+                    </p>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <button 
+                        className="btn btn-outline" 
+                        onClick={handleLoadMockData}
+                        disabled={loadingMockData || customers.length > 0 || products.length > 0}
+                        style={{ 
+                            opacity: (loadingMockData || customers.length > 0 || products.length > 0) ? 0.6 : 1,
+                            cursor: (loadingMockData || customers.length > 0 || products.length > 0) ? 'not-allowed' : 'pointer'
+                        }}
+                    >
+                        <TestTube size={16} /> 
+                        {loadingMockData ? 'Loading...' : 'Load Mock Data'}
+                    </button>
+                    <button 
+                        className="btn btn-ghost" 
+                        onClick={handleClearMockData}
+                        disabled={customers.length === 0 && products.length === 0}
+                        style={{ 
+                            opacity: (customers.length === 0 && products.length === 0) ? 0.6 : 1,
+                            cursor: (customers.length === 0 && products.length === 0) ? 'not-allowed' : 'pointer'
+                        }}
+                    >
+                        <Trash2 size={16} /> Delete All Data
+                    </button>
+                </div>
+                {(customers.length > 0 || products.length > 0) && (
+                    <div style={{ marginTop: 12, fontSize: '0.8rem', color: '#6b7280' }}>
+                        Current data: {customers.length} customers, {products.length} products
+                    </div>
+                )}
+            </SettingSection>
+
+            {/* ── Firebase Debug Status ── */}
+            <FirebaseDebugStatus />
 
             {/* ── Backup & Data ── */}
             <SettingSection title="Backup & Data" icon={Database}>

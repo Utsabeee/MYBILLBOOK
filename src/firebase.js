@@ -1,7 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-import { getAnalytics } from 'firebase/analytics';
 
 const firebaseConfig = {
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "dummy_api_key",
@@ -13,17 +12,14 @@ const firebaseConfig = {
     measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "dummy_measurement_id"
 };
 
-let app, auth, db, googleProvider, analytics;
+let app, auth, db, googleProvider;
 try {
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
     db = getFirestore(app);
     googleProvider = new GoogleAuthProvider();
-    if (typeof window !== "undefined") {
-        analytics = getAnalytics(app);
-    }
 } catch (e) {
     console.error("Firebase init failed. Please check your .env variables:", e);
 }
 
-export { auth, db, googleProvider, analytics };
+export { auth, db, googleProvider };

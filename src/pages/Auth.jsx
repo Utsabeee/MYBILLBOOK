@@ -8,6 +8,8 @@ import { auth, googleProvider, db } from '../firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
+import { DEFAULT_BUSINESS } from '../constants';
+import logoImage from '../components/image/ChatGPT Image Mar 2, 2026, 04_20_16 PM.png';
 
 function PasswordInput({ value, onChange, placeholder = 'Password', id }) {
     const [show, setShow] = useState(false);
@@ -82,23 +84,25 @@ function LoginScreen() {
             {/* Left decorative panel (hidden on mobile) */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, maxWidth: 500 }}
                 className="auth-left-panel">
-                <div style={{ color: 'white', padding: 40, maxWidth: 420 }}>
+                <div style={{ color: '#111827', padding: 40, maxWidth: 420 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 32 }}>
-                        <div style={{ width: 48, height: 48, background: 'linear-gradient(135deg,#3b82f6,#14b8a6)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Zap size={26} color="white" />
-                        </div>
+                        <img 
+                            src={logoImage} 
+                            alt="MyBillBook Logo" 
+                            style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover' }} 
+                        />
                         <div>
-                            <div style={{ fontSize: '1.5rem', fontFamily: 'Poppins,sans-serif', fontWeight: 800 }}>MyBillBook</div>
-                            <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Smart Billing & Inventory</div>
+                            <div style={{ fontSize: '1.5rem', fontFamily: 'Poppins,sans-serif', fontWeight: 800, color: '#111827' }}>MyBillBook</div>
+                            <div style={{ fontSize: '0.8rem', color: '#374151' }}>Smart Billing & Inventory</div>
                         </div>
                     </div>
-                    <h1 style={{ color: 'white', fontSize: '2rem', fontFamily: 'Poppins,sans-serif', marginBottom: 16, lineHeight: 1.2 }}>
+                    <h1 style={{ color: '#111827', fontSize: '2rem', fontFamily: 'Poppins,sans-serif', marginBottom: 16, lineHeight: 1.2 }}>
                         Manage your business<br />
                         <span style={{ background: 'linear-gradient(90deg,#60a5fa,#34d399)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
                             smarter & faster
                         </span>
                     </h1>
-                    <p style={{ color: '#94a3b8', lineHeight: 1.6, marginBottom: 28 }}>
+                    <p style={{ color: '#374151', lineHeight: 1.6, marginBottom: 28 }}>
                         Professional billing, inventory management, and business analytics — all in one powerful platform.
                     </p>
                     {[
@@ -109,7 +113,7 @@ function LoginScreen() {
                     ].map(f => (
                         <div key={f} style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
                             <CheckCircle size={16} color="#34d399" style={{ flexShrink: 0 }} />
-                            <span style={{ color: '#cbd5e1', fontSize: '0.875rem' }}>{f}</span>
+                            <span style={{ color: '#1f2937', fontSize: '0.875rem' }}>{f}</span>
                         </div>
                     ))}
                 </div>
@@ -158,7 +162,7 @@ function LoginScreen() {
                         ) : 'Sign In'}
                     </button>
 
-                    <button type="button" onClick={handleGoogleSignIn} className="btn btn-outline btn-lg" style={{ width: '100%', marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                    <button type="button" onClick={handleGoogleSignIn} className="btn btn-outline btn-lg" style={{ width: '100%', marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, color: '#000000' }}>
                         <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.745 12.27c0-.79-.07-1.54-.19-2.27h-11.3v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z" /><path fill="#34A853" d="M12.255 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96h-3.98v3.09C3.515 21.3 7.565 24 12.255 24z" /><path fill="#FBBC05" d="M5.525 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62h-3.98a11.86 11.86 0 000 10.76l3.98-3.09z" /><path fill="#EA4335" d="M12.255 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C18.205 1.19 15.495 0 12.255 0 7.565 0 3.515 2.7 1.545 6.62l3.98 3.09c.95-2.85 3.6-4.96 6.73-4.96z" /></svg>
                         Sign in with Google
                     </button>
@@ -173,7 +177,7 @@ function LoginScreen() {
                     </button>
                 </p>
 
-                <p style={{ textAlign: 'center', fontSize: '0.72rem', color: '#9ca3af', marginTop: 20 }}>
+                <p style={{ textAlign: 'center', fontSize: '0.72rem', color: '#000000', marginTop: 20 }}>
                     Enter your credentials to manage your store data securely.
                 </p>
             </div>
@@ -190,38 +194,57 @@ function LoginScreen() {
 function SignupScreen() {
     const { setAuthScreen } = useApp();
     const [step, setStep] = useState(1);
-    const [form, setForm] = useState({ name: '', phone: '', email: '', password: '', businessName: '', gst: '' });
+    const [form, setForm] = useState({ name: '', phone: '', email: '', password: '', businessName: DEFAULT_BUSINESS.name, gst: '' });
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
 
     const update = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
     const handleNext = async (e) => {
         e.preventDefault();
-        if (step === 1) { setStep(2); return; }
+        setError('');
+        
+        if (step === 1) {
+            if (!form.name || !form.phone || !form.email || !form.password) {
+                setError('Please fill all fields');
+                return;
+            }
+            if (form.password.length < 6) {
+                setError('Password must be at least 6 characters');
+                return;
+            }
+            setStep(2);
+            return;
+        }
+        
         setLoading(true);
         try {
             // 1. Create User
             const userCredential = await createUserWithEmailAndPassword(auth, form.email, form.password);
             const user = userCredential.user;
 
-            // 2. We can automatically create a business profile for them in Firestore
-            await setDoc(doc(db, "businesses", user.uid), {
-                name: form.businessName,
+            // 2. Create business profile with UTSAB.CO
+            const businessData = {
+                ...DEFAULT_BUSINESS,
+                name: form.businessName || DEFAULT_BUSINESS.name,
                 taxId: form.gst || '',
-                ownerName: form.name,
-                phone: form.phone,
                 email: form.email,
-                createdAt: new Date()
-            });
+                phone: form.phone,
+            };
+            
+            await setDoc(doc(db, "businesses", user.uid), businessData);
             await setDoc(doc(db, "users", user.uid), {
                 email: form.email,
                 name: form.name,
-                businessId: user.uid, // simpler 1:1 mapping for now
+                businessId: user.uid,
                 role: 'owner'
             });
-            toast.success("Account created successfully!");
+            
+            toast.success("🎉 Account created successfully!");
         } catch (err) {
-            toast.error(err.message.replace('Firebase: ', ''));
+            const errMsg = err.message?.replace('Firebase: ', '') || err.message;
+            setError(errMsg);
+            toast.error(errMsg);
         }
         setLoading(false);
     };
@@ -231,7 +254,11 @@ function SignupScreen() {
             <div className="auth-bg-pattern" />
             <div className="auth-card" style={{ maxWidth: 460 }}>
                 <div className="auth-logo">
-                    <div className="auth-logo-icon"><Zap size={28} color="white" /></div>
+                    <img 
+                        src={logoImage} 
+                        alt="MyBillBook Logo" 
+                        style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover', marginBottom: 12 }} 
+                    />
                     <h2 className="auth-title">Create Account</h2>
                     <p className="auth-sub">Step {step} of 2 — {step === 1 ? 'Personal Info' : 'Business Details'}</p>
                 </div>
@@ -246,6 +273,15 @@ function SignupScreen() {
                         }} />
                     ))}
                 </div>
+
+                {error && (
+                    <div style={{
+                        background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8,
+                        padding: '12px 16px', marginBottom: 16, color: '#dc2626', fontSize: '0.85rem'
+                    }}>
+                        ❌ {error}
+                    </div>
+                )}
 
                 <form className="auth-form" onSubmit={handleNext}>
                     {step === 1 ? (
@@ -336,7 +372,11 @@ function ForgotScreen() {
                 {!sent ? (
                     <>
                         <div className="auth-logo">
-                            <div className="auth-logo-icon"><Zap size={28} color="white" /></div>
+                            <img 
+                                src={logoImage} 
+                                alt="MyBillBook Logo" 
+                                style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover', marginBottom: 12 }} 
+                            />
                             <h2 className="auth-title">Reset Password</h2>
                             <p className="auth-sub">Enter your email to receive reset instructions</p>
                         </div>

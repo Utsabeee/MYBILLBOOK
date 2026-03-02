@@ -3,7 +3,7 @@
 // =====================================================
 
 export const CURRENCIES = [
-    { code: 'NPR', symbol: 'Rs.', label: 'Nepalese Rupee', locale: 'ne-NP' },
+    { code: 'NPR', symbol: 'Rs.', label: 'Nepalese Rupee', locale: 'en-NP' },
     { code: 'USD', symbol: '$', label: 'US Dollar', locale: 'en-US' },
     { code: 'EUR', symbol: '€', label: 'Euro', locale: 'de-DE' },
     { code: 'GBP', symbol: '£', label: 'British Pound', locale: 'en-GB' },
@@ -36,7 +36,7 @@ export const AVATAR_COLORS = [
 ];
 
 export const DEFAULT_BUSINESS = {
-    name: 'My New Business',
+    name: 'UTSAB.CO',
     taxId: '',
     taxLabel: 'VAT',
     taxRate: 13,
@@ -46,7 +46,7 @@ export const DEFAULT_BUSINESS = {
     country: '',
     logo: null,
     invoicePrefix: 'INV',
-    currencyCode: 'USD',
+    currencyCode: 'NPR',
     dateFormat: 'DD/MM/YYYY',
     invoiceColor: '#2563eb',
 };

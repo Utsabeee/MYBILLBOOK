@@ -4,9 +4,9 @@
 import { useApp } from '../context/AppContext';
 import {
     LayoutDashboard, FileText, Package, Users, BarChart3,
-    Settings, LogOut, TrendingUp, ShoppingCart, AlertTriangle,
-    X, Zap
+    Settings, LogOut, AlertTriangle, Zap, Bell
 } from 'lucide-react';
+import logoImage from './image/ChatGPT Image Mar 2, 2026, 04_20_16 PM.png';
 
 const NAV_ITEMS = [
     {
@@ -27,6 +27,7 @@ const NAV_ITEMS = [
     {
         section: 'Account',
         items: [
+            { id: 'notifications', label: 'Notifications', icon: Bell, badge: null },
             { id: 'settings', label: 'Settings', icon: Settings, badge: null },
         ]
     }
@@ -51,39 +52,39 @@ export default function Sidebar({ currentPage, onNavigate }) {
             <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
                 {/* Logo */}
                 <div className="sidebar-logo">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-                        <div style={{
-                            width: 36, height: 36,
-                            background: 'linear-gradient(135deg,#3b82f6,#14b8a6)',
-                            borderRadius: 8,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}>
-                            <Zap size={20} color="white" />
-                        </div>
+                    <div className="sidebar-logo-row">
+                        <img 
+                            src={logoImage} 
+                            alt="MyBillBook Logo" 
+                            className="sidebar-logo-img"
+                            style={{
+                                width: 50,
+                                height: 50,
+                                borderRadius: 12,
+                                objectFit: 'cover',
+                                marginRight: 8
+                            }}
+                        />
                         <div>
                             <div className="sidebar-logo-text">MyBillBook</div>
-                            <div className="sidebar-logo-sub">v2.0 Pro</div>
                         </div>
                     </div>
 
                     {/* Business name chip */}
-                    <div style={{
-                        marginTop: 8,
-                        background: 'rgba(255,255,255,0.07)',
-                        borderRadius: 6,
-                        padding: '6px 10px',
-                        display: 'flex', alignItems: 'center', gap: 6
-                    }}>
-                        <div style={{
-                            width: 24, height: 24, borderRadius: '50%',
-                            background: 'linear-gradient(135deg,#3b82f6,#14b8a6)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '0.65rem', fontWeight: 700, color: 'white', flexShrink: 0,
-                        }}>
-                            {(business?.name || 'M').charAt(0)}
-                        </div>
-                        <span style={{ fontSize: '0.76rem', color: '#cbd5e1', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {business?.name || 'My Store'}
+                    <div className="sidebar-business-chip">
+                        <img 
+                            src={business?.logo || logoImage} 
+                            alt="Business Logo" 
+                            className="sidebar-business-avatar-img"
+                            style={{
+                                width: 32,
+                                height: 32,
+                                borderRadius: 8,
+                                objectFit: 'cover'
+                            }}
+                        />
+                        <span className="sidebar-business-name">
+                            {business?.name || 'My General Store'}
                         </span>
                     </div>
                 </div>
@@ -101,20 +102,15 @@ export default function Sidebar({ currentPage, onNavigate }) {
                                         key={item.id}
                                         className={`sidebar-item ${isActive ? 'active' : ''}`}
                                         onClick={() => handleNav(item.id)}
-                                        style={{ cursor: 'pointer' }}
                                     >
                                         <Icon size={18} />
-                                        <span style={{ flex: 1 }}>{item.label}</span>
+                                        <span className="sidebar-item-label">{item.label}</span>
                                         {/* Low stock alert badge on Inventory */}
                                         {item.id === 'inventory' && lowStockProducts.length > 0 && (
                                             <span className="sidebar-badge">{lowStockProducts.length}</span>
                                         )}
                                         {item.badge && item.id !== 'inventory' && (
-                                            <span style={{
-                                                background: 'linear-gradient(135deg,#3b82f6,#14b8a6)',
-                                                color: 'white', fontSize: '0.6rem', fontWeight: 700,
-                                                padding: '2px 7px', borderRadius: 99,
-                                            }}>{item.badge}</span>
+                                            <span className="sidebar-new-badge">{item.badge}</span>
                                         )}
                                     </a>
                                 );
@@ -124,18 +120,11 @@ export default function Sidebar({ currentPage, onNavigate }) {
 
                     {/* Low stock alert */}
                     {lowStockProducts.length > 0 && (
-                        <div style={{
-                            marginTop: 12,
-                            background: 'rgba(239,68,68,0.12)',
-                            border: '1px solid rgba(239,68,68,0.25)',
-                            borderRadius: 8,
-                            padding: '10px 12px',
-                            display: 'flex', alignItems: 'flex-start', gap: 8,
-                        }}>
-                            <AlertTriangle size={14} color="#f87171" style={{ flexShrink: 0, marginTop: 1 }} />
+                        <div className="sidebar-lowstock-card">
+                            <AlertTriangle size={14} color="#f87171" className="sidebar-lowstock-icon" />
                             <div>
-                                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#fca5a5' }}>Low Stock Alert</div>
-                                <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: 2 }}>
+                                <div className="sidebar-lowstock-title">LS Alert</div>
+                                <div className="sidebar-lowstock-sub">
                                     {lowStockProducts.length} item{lowStockProducts.length > 1 ? 's' : ''} need restocking
                                 </div>
                             </div>
@@ -145,14 +134,13 @@ export default function Sidebar({ currentPage, onNavigate }) {
 
                 {/* Footer */}
                 <div className="sidebar-footer">
-                    <div style={{ padding: '8px 12px', marginBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'white' }}>{user?.displayName || 'User'}</div>
-                        <div style={{ fontSize: '0.65rem', color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.email}</div>
+                    <div className="sidebar-user-block">
+                        <div className="sidebar-user-name">{user?.displayName || 'User'}</div>
+                        <div className="sidebar-user-email">{user?.email}</div>
                     </div>
                     <button
                         className="sidebar-item logout-btn"
                         onClick={logout}
-                        style={{ width: '100%', border: 'none', cursor: 'pointer', color: '#9ca3af', display: 'flex', gap: 10, alignItems: 'center' }}
                     >
                         <LogOut size={18} />
                         <span>Logout</span>
