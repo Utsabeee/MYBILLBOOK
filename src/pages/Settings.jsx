@@ -6,7 +6,6 @@ import toast from 'react-hot-toast';
 import { useApp } from '../context/AppContext';
 import { CURRENCIES, DATE_FORMATS } from '../constants';
 import { MOCK_CUSTOMERS, MOCK_PRODUCTS, generateSampleInvoices } from '../utils/mockData';
-import FirebaseDebugStatus from '../components/FirebaseDebugStatus';
 import {
     Building2, FileText, Receipt, Users, Database,
     Save, Upload, CheckCircle, Info,
@@ -396,9 +395,6 @@ export default function Settings() {
                     </div>
                 )}
             </SettingSection>
-
-            {/* ── Firebase Debug Status ── */}
-            <FirebaseDebugStatus />
 
             {/* ── Backup & Data ── */}
             <SettingSection title="Backup & Data" icon={Database}>

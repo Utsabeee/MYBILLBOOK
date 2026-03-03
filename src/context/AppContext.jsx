@@ -1,13 +1,11 @@
 // =====================================================
-// AppContext.jsx — Global State Management
-// Sprint 1: localStorage persistence + global-first
-//            (no GST/GSTIN/India-only references)
+// AppContext.jsx — Global State Management (v2)
+// Backend API Integration + JWT Authentication
 // =====================================================
-import { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { auth, db } from '../firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, query, where, onSnapshot, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { CURRENCIES, DATE_FORMATS, AVATAR_COLORS, DEFAULT_BUSINESS } from '../constants';
+import { createContext, useContext, useState, useEffect } from 'react';
+import * as api from '../api/client';
+import { CURRENCIES, AVATAR_COLORS, DEFAULT_BUSINESS } from '../constants';
+import toast from 'react-hot-toast';
 
 const AppContext = createContext(null);
 
@@ -15,7 +13,7 @@ const AppContext = createContext(null);
 
 
 // Format a number as currency string using the business currency
-export function formatCurrency(amount, currencyCode = 'NPR') {
+export function formatCurrency(amount, currencyCode = 'USD') {
     const cur = CURRENCIES.find(c => c.code === currencyCode) || CURRENCIES[0];
     const n = Number(amount) || 0;
     try {
@@ -25,10 +23,6 @@ export function formatCurrency(amount, currencyCode = 'NPR') {
             minimumFractionDigits: 0,
             maximumFractionDigits: 2,
         }).format(n);
-        // Replace unwanted $ with correct symbol if it appears
-        if (currencyCode === 'NPR' && formatted.includes('$')) {
-            return formatted.replace('$', cur.symbol);
-        }
         return formatted;
     } catch {
         return `${cur.symbol}${n.toLocaleString()}`;
@@ -50,395 +44,391 @@ export function formatDate(dateStr, fmt = 'DD/MM/YYYY') {
 }
 
 // ── localStorage helpers ─────────────────────────────
-const LS = {
-    get: (key, fallback) => {
-        try {
-            const v = localStorage.getItem(key);
-            return v !== null ? JSON.parse(v) : fallback;
-        } catch { return fallback; }
-    },
-    set: (key, value) => {
-        try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { console.error("LS Error", e); }
+const TokenStorage = {
+    getAccessToken: () => localStorage.getItem('accessToken'),
+    getRefreshToken: () => localStorage.getItem('refreshToken'),
+    setAccessToken: (token) => localStorage.setItem('accessToken', token),
+    setRefreshToken: (token) => localStorage.setItem('refreshToken', token),
+    clear: () => {
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
     },
 };
 
-// ── Avatar Colors ────────────────────────────────────
-
-
-// ── Default Sample Data (Global-friendly) ────────────
-const DEFAULT_PRODUCTS = [];
-const DEFAULT_CUSTOMERS = [];
-const DEFAULT_INVOICES = [];
-
 // ── Provider ─────────────────────────────────────────
 export function AppProvider({ children }) {
-    // Auth — persisted initially
-    const [isAuthenticated, setIsAuthenticated] = useState(() => LS.get('mbb_auth', false));
+    // Auth state
+    const [isAuthenticated, setIsAuthenticated] = useState(!!TokenStorage.getAccessToken());
     const [user, setUser] = useState(null);
     const [authScreen, setAuthScreen] = useState('login');
+    const [authLoading, setAuthLoading] = useState(false);
 
-    // Business profile — persisted locally
-    const [business, setBusiness] = useState(() => LS.get('mbb_business', DEFAULT_BUSINESS));
+    // Business profile
+    const [business, setBusiness] = useState(DEFAULT_BUSINESS);
+    const [businessLoading, setBusinessLoading] = useState(false);
 
-    // Core data — persisted
-    const [products, setProducts] = useState(() => LS.get('mbb_products', DEFAULT_PRODUCTS));
-    const [customers, setCustomers] = useState(() => LS.get('mbb_customers', DEFAULT_CUSTOMERS));
-    const [invoices, setInvoices] = useState(() => LS.get('mbb_invoices', DEFAULT_INVOICES));
-    const [nextInvoiceNo, setNextInvoiceNo] = useState(() => LS.get('mbb_nextInv', 1));
-    const [payments, setPayments] = useState(() => LS.get('mbb_payments', []));
-    const [notifications, setNotifications] = useState(() => LS.get('mbb_notifications', []));
+    // Core data
+    const [products, setProducts] = useState([]);
+    const [productsLoading, setProductsLoading] = useState(false);
+
+    const [customers, setCustomers] = useState([]);
+    const [customersLoading, setCustomersLoading] = useState(false);
+
+    const [invoices, setInvoices] = useState([]);
+    const [invoicesLoading, setInvoicesLoading] = useState(false);
+
+    const [payments, setPayments] = useState([]);
+    const [paymentsLoading, setPaymentsLoading] = useState(false);
+
+    const [expenses, setExpenses] = useState([]);
+    const [expensesLoading, setExpensesLoading] = useState(false);
+
+    const [notifications, setNotifications] = useState([]);
 
     // UI state
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
-    // Ref to track latest payments for use in invoices listener
-    const paymentsRef = useRef([]);
-
-    // ── Firebase Auth Listener ───────────────────────
+    // ── Load initial data on mount ────────────────────
     useEffect(() => {
-        if (!auth) return;
-        return onAuthStateChanged(auth, (firebaseUser) => {
-            if (firebaseUser) {
-                setUser(firebaseUser);
-                setIsAuthenticated(true);
-            } else {
-                setUser(null);
-                setIsAuthenticated(false);
-            }
-        });
+        const token = TokenStorage.getAccessToken();
+        if (token) {
+            setIsAuthenticated(true);
+            loadAllData();
+        }
     }, []);
 
-    // ── Sync localStorage to Firebase on first login ──
-    useEffect(() => {
-        if (!user || !db) return;
-        
-        const syncLocalToFirebase = async () => {
-            try {
-                const uid = user.uid;
-                
-                // Sync business profile
-                const localBusiness = LS.get('mbb_business', DEFAULT_BUSINESS);
-                const businessWithUser = {
-                    ...localBusiness,
-                    email: user.email,
-                    name: user.displayName || localBusiness.name || 'My Default Business'
-                };
-                await setDoc(doc(db, 'businesses', uid), businessWithUser, { merge: true });
-                
-                // Sync products
-                const localProducts = LS.get('mbb_products', DEFAULT_PRODUCTS) || [];
-                for (const prod of localProducts) {
-                    if (prod.id) {
-                        await setDoc(doc(db, 'products', prod.id.toString()), 
-                            { ...prod, businessId: uid }, { merge: true }
-                        );
+    // ── Load all data from API ────────────────────────
+    const loadAllData = async (silent = false) => {
+        try {
+            const [business, products, customers, invoices, expenses] = await Promise.all([
+                api.businessApi.getProfile().catch(err => {
+                    if (!silent) console.error('Failed to load business:', err);
+                    return DEFAULT_BUSINESS;
+                }),
+                api.productsApi.getAll().catch(() => []),
+                api.customersApi.getAll().catch(() => []),
+                api.invoicesApi.getAll().catch(() => []),
+                api.expensesApi.getAll().catch(() => []),
+            ]);
+
+            setBusiness(business || DEFAULT_BUSINESS);
+            setProducts(products || []);
+            setCustomers(customers || []);
+            setInvoices(invoices || []);
+            setExpenses(expenses || []);
+
+            // Load payments for each invoice
+            if (invoices?.length > 0) {
+                const allPayments = [];
+                for (const invoice of invoices) {
+                    try {
+                        const payments = await api.paymentsApi.getForInvoice(invoice.id);
+                        allPayments.push(...payments);
+                    } catch (err) {
+                        if (!silent) console.error(`Failed to load payments for invoice ${invoice.id}:`, err);
                     }
                 }
-                
-                // Sync customers
-                const localCustomers = LS.get('mbb_customers', DEFAULT_CUSTOMERS) || [];
-                for (const cust of localCustomers) {
-                    if (cust.id) {
-                        await setDoc(doc(db, 'customers', cust.id.toString()), 
-                            { ...cust, businessId: uid }, { merge: true }
-                        );
-                    }
-                }
-                
-                // Sync invoices
-                const localInvoices = LS.get('mbb_invoices', DEFAULT_INVOICES) || [];
-                for (const inv of localInvoices) {
-                    if (inv.id) {
-                        await setDoc(doc(db, 'invoices', inv.id.toString()), 
-                            { ...inv, businessId: uid }, { merge: true }
-                        );
-                    }
-                }
-                
-                // Sync payments
-                const localPayments = LS.get('mbb_payments', []) || [];
-                for (const pay of localPayments) {
-                    if (pay.id) {
-                        await setDoc(doc(db, 'payments', pay.id.toString()), 
-                            { ...pay, businessId: uid }, { merge: true }
-                        );
-                    }
-                }
-                
-                console.log('✅ Synced localStorage data to Firebase');
-            } catch (err) {
-                console.error('⚠️ Sync error:', err.message);
+                setPayments(allPayments);
             }
-        };
-        
-        syncLocalToFirebase();
-    }, [user]);
-
-    // ── Firebase Firestore Sync ──────────────────────
-    useEffect(() => {
-        if (!user || !db) return;
-        const uid = user.uid;
-
-        const unsubBusiness = onSnapshot(doc(db, 'businesses', uid), (docSnap) => {
-            if (docSnap.exists()) {
-                setBusiness({ ...DEFAULT_BUSINESS, ...docSnap.data() });
-            } else {
-                setDoc(doc(db, 'businesses', uid), {
-                    ...DEFAULT_BUSINESS,
-                    email: user.email,
-                    name: user.displayName || 'My Default Business'
-                });
+        } catch (error) {
+            if (!silent) {
+                console.error('Failed to load app data:', error);
+                toast.error('Failed to load data');
             }
-        });
-
-        const unsubProducts = onSnapshot(query(collection(db, 'products'), where('businessId', '==', uid)), (snap) => {
-            setProducts(snap.empty ? [] : snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
-
-        const unsubCustomers = onSnapshot(query(collection(db, 'customers'), where('businessId', '==', uid)), (snap) => {
-            setCustomers(snap.empty ? [] : snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
-
-        // Helper to update invoices with payment info
-        const updateInvoicesWithPayments = (invoicesToUpdate, paymentData) => {
-            return invoicesToUpdate.map(invoice => {
-                const invoicePayments = paymentData.filter(p => p.invoiceId === invoice.id);
-                const totalPaid = invoicePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-                const invoiceTotal = invoice.total || 0;
-                const newStatus = totalPaid >= invoiceTotal ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
-                return {
-                    ...invoice,
-                    paid: totalPaid,
-                    status: newStatus,
-                };
-            });
-        };
-
-        const unsubPayments = onSnapshot(query(collection(db, 'payments'), where('businessId', '==', uid)), (snap) => {
-            const fetchedPayments = snap.empty ? [] : snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            paymentsRef.current = fetchedPayments; // Update ref
-            setPayments(fetchedPayments);
-            
-            // Update invoices with correct paid/status based on payments
-            setInvoices(prevInvoices => updateInvoicesWithPayments(prevInvoices, fetchedPayments));
-        });
-
-        const unsubInvoices = onSnapshot(query(collection(db, 'invoices'), where('businessId', '==', uid)), (snap) => {
-            if (snap.empty) {
-                setInvoices([]);
-                setNextInvoiceNo(1);
-            } else {
-                const fetchedInvoices = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                // Update with payment info using latest payments from ref
-                setInvoices(prevInvoices => {
-                    return updateInvoicesWithPayments(fetchedInvoices, paymentsRef.current);
-                });
-                const maxInv = fetchedInvoices.reduce((max, inv) => {
-                    const parts = inv.invoiceNo?.split('-');
-                    if (!parts) return max;
-                    const num = parseInt(parts[parts.length - 1], 10);
-                    return !isNaN(num) && num > max ? num : max;
-                }, 0);
-                setNextInvoiceNo(maxInv + 1);
-            }
-        });
-
-        return () => {
-            unsubBusiness(); unsubProducts(); unsubCustomers(); unsubInvoices(); unsubPayments();
-        };
-    }, [user]);
-
-    // ── Ensure currencyCode is set (migration) ───────
-    useEffect(() => {
-        if (!business.currencyCode) {
-            setBusiness(prev => ({ ...prev, currencyCode: 'NPR' }));
         }
-    }, [business.currencyCode]);
+    };
 
-    // ── LocalStorage Fallback Sync ───────────────────
-    useEffect(() => { if (!user) LS.set('mbb_auth', isAuthenticated); }, [isAuthenticated, user]);
-    useEffect(() => { if (!user) LS.set('mbb_business', business); }, [business, user]);
-    useEffect(() => { if (!user) LS.set('mbb_products', products); }, [products, user]);
-    useEffect(() => { if (!user) LS.set('mbb_customers', customers); }, [customers, user]);
-    useEffect(() => { if (!user) LS.set('mbb_invoices', invoices); }, [invoices, user]);
-    useEffect(() => { if (!user) LS.set('mbb_nextInv', nextInvoiceNo); }, [nextInvoiceNo, user]);
-    useEffect(() => { if (!user) LS.set('mbb_payments', payments); }, [payments, user]);
-    useEffect(() => { if (!user) LS.set('mbb_notifications', notifications); }, [notifications, user]);
+    // ── Auth Functions ───────────────────────────────
+    const register = async (email, password, businessName, ownerName, businessPhone) => {
+        setAuthLoading(true);
+        try {
+            const response = await api.authApi.register({
+                email,
+                password,
+                businessName,
+                ownerName,
+                businessPhone,
+            });
 
-    // ── Auth ─────────────────────────────────────────
-    const login = () => setIsAuthenticated(true);
-    const logout = async () => {
-        if (auth) await signOut(auth);
+            TokenStorage.setAccessToken(response.accessToken);
+            TokenStorage.setRefreshToken(response.refreshToken);
+            setUser(response.user);
+            setIsAuthenticated(true);
+            
+            // Set business before loading data
+            if (response.business) {
+                setBusiness({
+                    ...DEFAULT_BUSINESS,
+                    ...response.business,
+                });
+            }
+            
+            // Load all business data (silent mode to avoid duplicate error toasts)
+            await loadAllData(true);
+
+            toast.success('🎉 Account created successfully!');
+            return true;
+        } catch (error) {
+            console.error('Registration error:', error);
+            toast.error(error.message || 'Registration failed');
+            return false;
+        } finally {
+            setAuthLoading(false);
+        }
+    };
+
+    const login = async (email, password) => {
+        setAuthLoading(true);
+        try {
+            const response = await api.authApi.login(email, password);
+
+            TokenStorage.setAccessToken(response.accessToken);
+            TokenStorage.setRefreshToken(response.refreshToken);
+            setUser(response.user);
+            setIsAuthenticated(true);
+            setBusiness(response.business || DEFAULT_BUSINESS);
+
+            // Load all data after login
+            await loadAllData();
+
+            toast.success('Login successful!');
+            return true;
+        } catch (error) {
+            toast.error(error.message || 'Login failed');
+            return false;
+        } finally {
+            setAuthLoading(false);
+        }
+    };
+
+    const logout = () => {
+        TokenStorage.clear();
         setUser(null);
         setIsAuthenticated(false);
-        // Clear local state immediately for a fresh feel
         setProducts([]);
         setCustomers([]);
         setInvoices([]);
-        setNextInvoiceNo(1);
+        setPayments([]);
+        setExpenses([]);
         setBusiness(DEFAULT_BUSINESS);
+        setNotifications([]);
+        toast.success('Logged out successfully');
     };
 
     // ── Product CRUD ─────────────────────────────────
-    const addProduct = async (p) => {
-        const id = Date.now().toString();
-        const pObj = { ...p, id, active: true, businessId: user?.uid || 'local' };
-        if (user && db) {
-            await setDoc(doc(db, 'products', id), pObj);
-        } else {
-            setProducts(prev => [...prev, pObj]);
+    const addProduct = async (productData) => {
+        setProductsLoading(true);
+        try {
+            const product = await api.productsApi.create(productData);
+            setProducts(prev => [...prev, product]);
+            toast.success('Product added successfully');
+            return product;
+        } catch (error) {
+            toast.error(error.message || 'Failed to add product');
+            throw error;
+        } finally {
+            setProductsLoading(false);
         }
     };
-    const updateProduct = async (id, u) => {
-        if (user && db) await updateDoc(doc(db, 'products', id.toString()), u);
-        else setProducts(prev => prev.map(p => p.id === id ? { ...p, ...u } : p));
+
+    const updateProduct = async (id, updates) => {
+        setProductsLoading(true);
+        try {
+            const product = await api.productsApi.update(id, updates);
+            setProducts(prev => prev.map(p => p.id === id ? product : p));
+            toast.success('Product updated successfully');
+            return product;
+        } catch (error) {
+            toast.error(error.message || 'Failed to update product');
+            throw error;
+        } finally {
+            setProductsLoading(false);
+        }
     };
+
     const deleteProduct = async (id) => {
-        if (user && db) await deleteDoc(doc(db, 'products', id.toString()));
-        else setProducts(prev => prev.filter(p => p.id !== id));
+        setProductsLoading(true);
+        try {
+            await api.productsApi.delete(id);
+            setProducts(prev => prev.filter(p => p.id !== id));
+            toast.success('Product deleted successfully');
+        } catch (error) {
+            toast.error(error.message || 'Failed to delete product');
+            throw error;
+        } finally {
+            setProductsLoading(false);
+        }
     };
-    const adjustStock = async (id, d) => {
-        const prod = products.find(p => p.id === id);
-        if (!prod) return;
-        const newStock = Math.max(0, prod.stock + d);
-        if (user && db) await updateDoc(doc(db, 'products', id.toString()), { stock: newStock });
-        else setProducts(prev => prev.map(p => p.id === id ? { ...p, stock: newStock } : p));
-        
-        // Generate low stock notification
-        if (newStock <= prod.minStock && prod.stock > prod.minStock) {
-            addNotification({
-                type: 'warning',
-                title: 'Low Stock Alert',
-                body: `${prod.name} is now low in stock (${newStock} ${prod.unit} remaining)`,
-            });
+
+    const adjustStock = async (id, quantity) => {
+        const product = products.find(p => p.id === id);
+        if (!product) return;
+
+        const newStock = Math.max(0, product.stock + quantity);
+        try {
+            await updateProduct(id, { stock: newStock });
+
+            // Low stock notification
+            if (newStock <= product.minStock && product.stock > product.minStock) {
+                addNotification({
+                    type: 'warning',
+                    title: 'Low Stock Alert',
+                    body: `${product.name} is now low in stock (${newStock} remaining)`,
+                });
+            }
+        } catch (error) {
+            console.error('Failed to adjust stock:', error);
         }
     };
 
     // ── Customer CRUD ────────────────────────────────
-    const addCustomer = async (c) => {
-        const colorIdx = customers.length % AVATAR_COLORS.length;
-        const id = Date.now().toString();
-        const cObj = { ...c, id, colorIdx, businessId: user?.uid || 'local' };
-        if (user && db) await setDoc(doc(db, 'customers', id), cObj);
-        else setCustomers(prev => [...prev, cObj]);
+    const addCustomer = async (customerData) => {
+        setCustomersLoading(true);
+        try {
+            const customer = await api.customersApi.create(customerData);
+            setCustomers(prev => [...prev, customer]);
+            toast.success('Customer added successfully');
+            return customer;
+        } catch (error) {
+            toast.error(error.message || 'Failed to add customer');
+            throw error;
+        } finally {
+            setCustomersLoading(false);
+        }
     };
-    const updateCustomer = async (id, u) => {
-        if (user && db) await updateDoc(doc(db, 'customers', id.toString()), u);
-        else setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...u } : c));
+
+    const updateCustomer = async (id, updates) => {
+        setCustomersLoading(true);
+        try {
+            const customer = await api.customersApi.update(id, updates);
+            setCustomers(prev => prev.map(c => c.id === id ? customer : c));
+            toast.success('Customer updated successfully');
+            return customer;
+        } catch (error) {
+            toast.error(error.message || 'Failed to update customer');
+            throw error;
+        } finally {
+            setCustomersLoading(false);
+        }
     };
+
     const deleteCustomer = async (id) => {
-        if (user && db) await deleteDoc(doc(db, 'customers', id.toString()));
-        else setCustomers(prev => prev.filter(c => c.id !== id));
+        setCustomersLoading(true);
+        try {
+            await api.customersApi.delete(id);
+            setCustomers(prev => prev.filter(c => c.id !== id));
+            toast.success('Customer deleted successfully');
+        } catch (error) {
+            toast.error(error.message || 'Failed to delete customer');
+            throw error;
+        } finally {
+            setCustomersLoading(false);
+        }
     };
 
     // ── Invoice CRUD ─────────────────────────────────
-    const addInvoice = async (invoice) => {
-        const id = Date.now().toString();
-        const year = new Date().getFullYear();
-        const invoiceNo = `${business.invoicePrefix}-${year}-${String(nextInvoiceNo).padStart(3, '0')}`;
-        const invObj = { ...invoice, id, invoiceNo, businessId: user?.uid || 'local' };
-
-        // Deduct inventory for each item
-        for (const item of (invoice.items || [])) {
-            const product = products.find(p => p.id === item.productId);
-            if (product) {
-                const newStock = Math.max(0, product.stock - item.qty);
-                if (user && db) {
-                    await updateDoc(doc(db, 'products', item.productId.toString()), { stock: newStock });
-                } else {
-                    setProducts(prev => prev.map(p => p.id === item.productId ? { ...p, stock: newStock } : p));
-                }
-            }
+    const addInvoice = async (invoiceData) => {
+        setInvoicesLoading(true);
+        try {
+            const invoice = await api.invoicesApi.create(invoiceData);
+            setInvoices(prev => [...prev, invoice]);
+            toast.success('Invoice created successfully');
+            return invoice;
+        } catch (error) {
+            toast.error(error.message || 'Failed to create invoice');
+            throw error;
+        } finally {
+            setInvoicesLoading(false);
         }
+    };
 
-        if (user && db) {
-            await setDoc(doc(db, 'invoices', id), invObj);
-        } else {
-            setNextInvoiceNo(n => n + 1);
-            setInvoices(prev => [...prev, invObj]);
+    const updateInvoice = async (id, updates) => {
+        setInvoicesLoading(true);
+        try {
+            const invoice = await api.invoicesApi.update(id, updates);
+            setInvoices(prev => prev.map(i => i.id === id ? { ...i, ...invoice } : i));
+            toast.success('Invoice updated successfully');
+            return invoice;
+        } catch (error) {
+            toast.error(error.message || 'Failed to update invoice');
+            throw error;
+        } finally {
+            setInvoicesLoading(false);
         }
-        return invoiceNo;
     };
-    const updateInvoice = async (id, u) => {
-        if (user && db) await updateDoc(doc(db, 'invoices', id.toString()), u);
-        else setInvoices(prev => prev.map(i => i.id === id ? { ...i, ...u } : i));
-    };
+
     const deleteInvoice = async (id) => {
-        // Restore inventory when deleting invoice
-        const invoiceToDelete = invoices.find(i => i.id === id);
-        if (invoiceToDelete) {
-            for (const item of (invoiceToDelete.items || [])) {
-                const product = products.find(p => p.id === item.productId);
-                if (product) {
-                    const newStock = product.stock + item.qty;
-                    if (user && db) {
-                        await updateDoc(doc(db, 'products', item.productId.toString()), { stock: newStock });
-                    } else {
-                        setProducts(prev => prev.map(p => p.id === item.productId ? { ...p, stock: newStock } : p));
-                    }
-                }
-            }
+        setInvoicesLoading(true);
+        try {
+            await api.invoicesApi.delete(id);
+            setInvoices(prev => prev.filter(i => i.id !== id));
+            setPayments(prev => prev.filter(p => p.invoiceId !== id));
+            toast.success('Invoice deleted successfully');
+        } catch (error) {
+            toast.error(error.message || 'Failed to delete invoice');
+            throw error;
+        } finally {
+            setInvoicesLoading(false);
         }
-
-        if (user && db) await deleteDoc(doc(db, 'invoices', id.toString()));
-        else setInvoices(prev => prev.filter(i => i.id !== id));
     };
 
     // ── Payment CRUD ─────────────────────────────────
     const addPayment = async (paymentData) => {
-        const id = Date.now().toString();
-        const paymentObj = {
-            ...paymentData,
-            id,
-            businessId: user?.uid || 'local',
-            createdAt: new Date().toISOString(),
-        };
-        
-        if (user && db) {
-            // Just add the payment - Firebase listener will update invoice status
-            await setDoc(doc(db, 'payments', id), paymentObj);
-        } else {
-            // For local users, add payment and update invoice
-            setPayments(prev => [...prev, paymentObj]);
-            const invoice = invoices.find(i => i.id === paymentData.invoiceId);
-            if (invoice) {
-                const totalPaid = paymentObj.amount + (invoice.paid || 0);
-                const newStatus = totalPaid >= invoice.total ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
-                setInvoices(prev => prev.map(i => i.id === paymentData.invoiceId ? { ...i, paid: totalPaid, status: newStatus } : i));
-                
-                // Generate payment received notification
-                const customer = customers.find(c => c.id === invoice.customerId);
-                addNotification({
-                    type: newStatus === 'paid' ? 'success' : 'info',
-                    title: newStatus === 'paid' ? 'Invoice Paid' : 'Payment Received',
-                    body: `${invoice.invoiceNo} received ${formatCurrency(paymentObj.amount, business.currencyCode || 'NPR')}${customer ? ` from ${customer.name}` : ''}`,
-                });
-            }
+        setPaymentsLoading(true);
+        try {
+            const result = await api.paymentsApi.create(paymentData);
+            setPayments(prev => [...prev, result.payment]);
+            
+            // Update invoice in local state
+            setInvoices(prev => prev.map(i => 
+                i.id === paymentData.invoiceId 
+                    ? { ...i, ...result.invoice }
+                    : i
+            ));
+            
+            toast.success('Payment recorded successfully');
+            return result.payment;
+        } catch (error) {
+            toast.error(error.message || 'Failed to record payment');
+            throw error;
+        } finally {
+            setPaymentsLoading(false);
         }
-        return id;
     };
-    
-    const updatePayment = async (id, u) => {
-        if (user && db) await updateDoc(doc(db, 'payments', id.toString()), u);
-        else setPayments(prev => prev.map(p => p.id === id ? { ...p, ...u } : p));
+
+    const updatePayment = async (id, updates) => {
+        setPaymentsLoading(true);
+        try {
+            // Note: Backend doesn't support payment update, only delete & recreate
+            toast.error('Please delete and recreate the payment to modify it');
+            throw new Error('Payment update not supported');
+        } catch (error) {
+            toast.error(error.message);
+            throw error;
+        } finally {
+            setPaymentsLoading(false);
+        }
     };
-    
+
     const deletePayment = async (id) => {
-        const payment = payments.find(p => p.id === id);
-        if (payment) {
-            if (user && db) {
-                // Just delete the payment - Firebase listener will update invoice status
-                await deleteDoc(doc(db, 'payments', id.toString()));
-            } else {
-                // For local users, delete payment and update invoice
-                setPayments(prev => prev.filter(p => p.id !== id));
-                const invoice = invoices.find(i => i.id === payment.invoiceId);
-                if (invoice) {
-                    const totalPaid = Math.max(0, (invoice.paid || 0) - payment.amount);
-                    const newStatus = totalPaid >= invoice.total ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
-                    setInvoices(prev => prev.map(i => i.id === payment.invoiceId ? { ...i, paid: totalPaid, status: newStatus } : i));
-                }
-            }
+        setPaymentsLoading(true);
+        try {
+            const payment = payments.find(p => p.id === id);
+            if (!payment) throw new Error('Payment not found');
+
+            await api.paymentsApi.delete(id);
+            setPayments(prev => prev.filter(p => p.id !== id));
+            
+            // Reload invoices to get updated paid status
+            const updated = await api.invoicesApi.getAll();
+            setInvoices(updated);
+            
+            toast.success('Payment deleted successfully');
+        } catch (error) {
+            toast.error(error.message || 'Failed to delete payment');
+            throw error;
+        } finally {
+            setPaymentsLoading(false);
         }
     };
 
@@ -452,7 +442,6 @@ export function AppProvider({ children }) {
             createdAt: new Date().toISOString(),
         };
         setNotifications(prev => [notifObj, ...prev]);
-        return id;
     };
 
     const markAsRead = (id) => {
@@ -471,98 +460,174 @@ export function AppProvider({ children }) {
         setNotifications([]);
     };
 
-    // ── Helper: Calculate customer balance from payments ──
+    // ── Helper: Calculate customer balance ────────────
     const getCustomerBalance = (customerId) => {
         const customerInvoices = invoices.filter(i => i.customerId === customerId);
         if (customerInvoices.length === 0) return 0;
-        
+
         const totalBilled = customerInvoices.reduce((sum, i) => sum + (i.total || 0), 0);
-        const totalPaid = payments
-            .filter(p => customerInvoices.some(i => i.id === p.invoiceId))
-            .reduce((sum, p) => sum + (p.amount || 0), 0);
-        
+        const totalPaid = customerInvoices.reduce((sum, i) => sum + (i.paid || 0), 0);
+
         return totalBilled - totalPaid;
+    };
+
+    // ── Expense CRUD ─────────────────────────────────
+    const addExpense = async (expenseData) => {
+        setExpensesLoading(true);
+        try {
+            const expense = await api.expensesApi.create(expenseData);
+            setExpenses(prev => [...prev, expense]);
+            toast.success('Expense added successfully');
+            return expense;
+        } catch (error) {
+            toast.error(error.message || 'Failed to add expense');
+            throw error;
+        } finally {
+            setExpensesLoading(false);
+        }
+    };
+
+    const updateExpense = async (id, updates) => {
+        setExpensesLoading(true);
+        try {
+            const expense = await api.expensesApi.update(id, updates);
+            setExpenses(prev => prev.map(e => e.id === id ? expense : e));
+            toast.success('Expense updated successfully');
+            return expense;
+        } catch (error) {
+            toast.error(error.message || 'Failed to update expense');
+            throw error;
+        } finally {
+            setExpensesLoading(false);
+        }
+    };
+
+    const deleteExpense = async (id) => {
+        setExpensesLoading(true);
+        try {
+            await api.expensesApi.delete(id);
+            setExpenses(prev => prev.filter(e => e.id !== id));
+            toast.success('Expense deleted successfully');
+        } catch (error) {
+            toast.error(error.message || 'Failed to delete expense');
+            throw error;
+        } finally {
+            setExpensesLoading(false);
+        }
     };
 
     // ── Business Profile ─────────────────────────────
     const updateBusiness = async (updates) => {
-        if (user && db) await updateDoc(doc(db, 'businesses', user.uid), updates);
-        else setBusiness(prev => ({ ...prev, ...updates }));
-    };
-
-    // Helper to reset all app data (for testing / demo)
-    const resetToSampleData = () => {
-        setProducts([]);
-        setCustomers([]);
-        setInvoices([]);
-        setNextInvoiceNo(1);
-        setBusiness(DEFAULT_BUSINESS);
+        setBusinessLoading(true);
+        try {
+            const updated = await api.businessApi.updateProfile(updates);
+            setBusiness(updated);
+            toast.success('Business profile updated');
+            return updated;
+        } catch (error) {
+            toast.error(error.message || 'Failed to update business profile');
+            throw error;
+        } finally {
+            setBusinessLoading(false);
+        }
     };
 
     // ── Computed Values ──────────────────────────────
-    const lowStockProducts = products.filter(p => p.stock <= p.minStock);
+    const lowStockProducts = products.filter(p => (p.stock || 0) <= (p.minStock || 0));
+    
     const todayStr = new Date().toISOString().slice(0, 10);
-    const totalSalesToday = invoices.filter(i => i.date === todayStr).reduce((s, i) => s + i.total, 0);
-    // Calculate pending payments - only for actual customers (not suppliers)
-    const pendingPayments = invoices.reduce((s, i) => {
-        // Find the customer associated with this invoice
-        const customer = customers.find(c => c.id === i.customerId);
-        // Only count if it's an actual customer (not a supplier)
-        if (!customer || customer.type !== 'customer') return s;
-        
-        const invoicePayments = payments.filter(p => p.invoiceId === i.id);
-        const totalPaid = invoicePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-        const remaining = i.total - totalPaid;
-        // Only add positive balances (amounts customers owe)
-        return s + (remaining > 0 ? remaining : 0);
-    }, 0);
+    const totalSalesToday = invoices
+        .filter(i => i.date?.slice(0, 10) === todayStr)
+        .reduce((s, i) => s + (i.total || 0), 0);
 
-    // Log calculation details for verification
-    console.log('📊 Dashboard - Pending Payments Calculation:');
-    const pendingInvoices = invoices
-        .map(i => {
-            const customer = customers.find(c => c.id === i.customerId);
-            if (!customer || customer.type !== 'customer') return null;
-            const invoicePayments = payments.filter(p => p.invoiceId === i.id);
-            const totalPaid = invoicePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-            const remaining = i.total - totalPaid;
-            return remaining > 0 ? {
-                invoiceNo: i.invoiceNo,
-                customer: customer.name,
-                total: i.total,
-                paid: totalPaid,
-                remaining: remaining
-            } : null;
-        })
-        .filter(Boolean);
-    if (pendingInvoices.length > 0) console.table(pendingInvoices);
-    console.log('📊 Dashboard - Total Pending Payments:', pendingPayments);
+    const pendingPayments = invoices
+        .filter(i => i.status !== 'paid')
+        .reduce((s, i) => s + (i.total - (i.paid || 0)), 0);
 
-    // Currency helper bound to current business currency
-    const currency = (amount) => formatCurrency(amount, business.currencyCode || 'NPR');
-    const currencySymbol = CURRENCIES.find(c => c.code === (business.currencyCode || 'NPR'))?.symbol || 'Rs.';
+    // Currency helpers
+    const currency = (amount) => formatCurrency(amount, business.currency || 'USD');
+    const currencySymbol = CURRENCIES.find(c => c.code === (business.currency || 'USD'))?.symbol || '$';
 
     return (
         <AppContext.Provider value={{
             // Auth
-            isAuthenticated, user, login, logout,
-            authScreen, setAuthScreen,
+            isAuthenticated,
+            user,
+            authScreen,
+            setAuthScreen,
+            authLoading,
+            register,
+            login,
+            logout,
+
             // Business
-            business, updateBusiness,
-            // Data
-            products, addProduct, updateProduct, deleteProduct, adjustStock,
-            customers, addCustomer, updateCustomer, deleteCustomer,
-            invoices, addInvoice, updateInvoice, deleteInvoice,
-            payments, addPayment, updatePayment, deletePayment,
-            notifications, addNotification, markAsRead, markAllAsRead, deleteNotification, clearAllNotifications,
+            business,
+            updateBusiness,
+            businessLoading,
+
+            // Products
+            products,
+            productsLoading,
+            addProduct,
+            updateProduct,
+            deleteProduct,
+            adjustStock,
+
+            // Customers
+            customers,
+            customersLoading,
+            addCustomer,
+            updateCustomer,
+            deleteCustomer,
+
+            // Invoices
+            invoices,
+            invoicesLoading,
+            addInvoice,
+            updateInvoice,
+            deleteInvoice,
+
+            // Payments
+            payments,
+            paymentsLoading,
+            addPayment,
+            updatePayment,
+            deletePayment,
+
+            // Expenses
+            expenses,
+            expensesLoading,
+            addExpense,
+            updateExpense,
+            deleteExpense,
+
+            // Notifications
+            notifications,
+            addNotification,
+            markAsRead,
+            markAllAsRead,
+            deleteNotification,
+            clearAllNotifications,
+
             // Computed
-            lowStockProducts, totalSalesToday, pendingPayments,
-            // Currency & Date formatting
-            currency, currencySymbol, CURRENCIES, formatDate,
-            // Helpers
-            AVATAR_COLORS, getCustomerBalance,
-            sidebarOpen, setSidebarOpen,
-            resetToSampleData,
+            lowStockProducts,
+            totalSalesToday,
+            pendingPayments,
+
+            // Utilities
+            currency,
+            currencySymbol,
+            CURRENCIES,
+            formatDate,
+            AVATAR_COLORS,
+            getCustomerBalance,
+
+            // UI
+            sidebarOpen,
+            setSidebarOpen,
+
+            // Data loading
+            loadAllData,
         }}>
             {children}
         </AppContext.Provider>

@@ -1,14 +1,11 @@
 // =====================================================
 // Auth.jsx — Login, Signup, Forgot Password screens
+// Using JWT authentication via AppContext
 // =====================================================
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Eye, EyeOff, Zap, Mail, Lock, User, Phone, Building2, ArrowLeft, CheckCircle } from 'lucide-react';
-import { auth, googleProvider, db } from '../firebase';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, sendPasswordResetEmail } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
-import { DEFAULT_BUSINESS } from '../constants';
 import logoImage from '../components/image/ChatGPT Image Mar 2, 2026, 04_20_16 PM.png';
 
 function PasswordInput({ value, onChange, placeholder = 'Password', id }) {
@@ -50,32 +47,25 @@ function InputWithIcon({ icon: Icon, ...rest }) {
 
 // ── Login Screen ──
 function LoginScreen() {
-    const { setAuthScreen } = useApp();
+    const { setAuthScreen, login, authLoading } = useApp();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [localLoading, setLocalLoading] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!email || !password) { setError('Please fill all fields'); return; }
-        setLoading(true);
+        setLocalLoading(true);
         setError('');
         try {
-            await signInWithEmailAndPassword(auth, email, password);
-            // AppContext's onAuthStateChanged will pick this up
+            await login(email, password);
+            // AppContext will set authUser and redirect
         } catch (err) {
-            setError(err.message.replace('Firebase: ', ''));
+            const errMsg = err.response?.data?.error || err.message || 'Login failed';
+            setError(errMsg);
         }
-        setLoading(false);
-    };
-
-    const handleGoogleSignIn = async () => {
-        try {
-            await signInWithPopup(auth, googleProvider);
-        } catch (err) {
-            setError(err.message.replace('Firebase: ', ''));
-        }
+        setLocalLoading(false);
     };
 
     return (
@@ -151,8 +141,8 @@ function LoginScreen() {
                         <PasswordInput id="login-password" value={password} onChange={e => setPassword(e.target.value)} />
                     </div>
 
-                    <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%', marginTop: 4 }} disabled={loading}>
-                        {loading ? (
+                    <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%', marginTop: 4 }} disabled={localLoading || authLoading}>
+                        {localLoading || authLoading ? (
                             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}>
                                     <path d="M21 12a9 9 0 1 1-6.219-8.56" />
@@ -160,11 +150,6 @@ function LoginScreen() {
                                 Signing in...
                             </span>
                         ) : 'Sign In'}
-                    </button>
-
-                    <button type="button" onClick={handleGoogleSignIn} className="btn btn-outline btn-lg" style={{ width: '100%', marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, color: '#000000' }}>
-                        <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.745 12.27c0-.79-.07-1.54-.19-2.27h-11.3v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z" /><path fill="#34A853" d="M12.255 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96h-3.98v3.09C3.515 21.3 7.565 24 12.255 24z" /><path fill="#FBBC05" d="M5.525 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62h-3.98a11.86 11.86 0 000 10.76l3.98-3.09z" /><path fill="#EA4335" d="M12.255 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C18.205 1.19 15.495 0 12.255 0 7.565 0 3.515 2.7 1.545 6.62l3.98 3.09c.95-2.85 3.6-4.96 6.73-4.96z" /></svg>
-                        Sign in with Google
                     </button>
                 </form>
 
@@ -192,10 +177,10 @@ function LoginScreen() {
 
 // ── Signup Screen ──
 function SignupScreen() {
-    const { setAuthScreen } = useApp();
+    const { setAuthScreen, register, authLoading } = useApp();
     const [step, setStep] = useState(1);
-    const [form, setForm] = useState({ name: '', phone: '', email: '', password: '', businessName: DEFAULT_BUSINESS.name, gst: '' });
-    const [loading, setLoading] = useState(false);
+    const [form, setForm] = useState({ name: '', phone: '', email: '', password: '', businessName: 'My Store', gst: '' });
+    const [localLoading, setLocalLoading] = useState(false);
     const [error, setError] = useState('');
 
     const update = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -217,36 +202,19 @@ function SignupScreen() {
             return;
         }
         
-        setLoading(true);
+        setLocalLoading(true);
         try {
-            // 1. Create User
-            const userCredential = await createUserWithEmailAndPassword(auth, form.email, form.password);
-            const user = userCredential.user;
-
-            // 2. Create business profile with UTSAB.CO
-            const businessData = {
-                ...DEFAULT_BUSINESS,
-                name: form.businessName || DEFAULT_BUSINESS.name,
-                taxId: form.gst || '',
-                email: form.email,
-                phone: form.phone,
-            };
-            
-            await setDoc(doc(db, "businesses", user.uid), businessData);
-            await setDoc(doc(db, "users", user.uid), {
-                email: form.email,
-                name: form.name,
-                businessId: user.uid,
-                role: 'owner'
-            });
-            
-            toast.success("🎉 Account created successfully!");
+            // Register with JWT backend
+            const success = await register(form.email, form.password, form.businessName, form.name, form.phone);
+            if (success) {
+                // Success toast already shown in AppContext
+                // Auto-login happens in register function
+            }
         } catch (err) {
-            const errMsg = err.message?.replace('Firebase: ', '') || err.message;
+            const errMsg = err.response?.data?.error || err.message || 'Failed to create account';
             setError(errMsg);
-            toast.error(errMsg);
         }
-        setLoading(false);
+        setLocalLoading(false);
     };
 
     return (
@@ -327,8 +295,8 @@ function SignupScreen() {
                         </>
                     )}
 
-                    <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%' }} disabled={loading}>
-                        {loading ? 'Creating...' : step === 1 ? 'Continue →' : 'Create Account'}
+                    <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%' }} disabled={localLoading || authLoading}>
+                        {localLoading || authLoading ? 'Creating...' : step === 1 ? 'Continue →' : 'Create Account'}
                     </button>
                 </form>
 
@@ -352,53 +320,20 @@ function SignupScreen() {
 // ── Forgot Password Screen ──
 function ForgotScreen() {
     const { setAuthScreen } = useApp();
-    const [email, setEmail] = useState('');
-    const [sent, setSent] = useState(false);
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        try {
-            await sendPasswordResetEmail(auth, email);
-            setSent(true);
-        } catch (err) {
-            toast.error(err.message.replace('Firebase: ', ''));
-        }
-    };
-
     return (
         <div className="auth-page">
             <div className="auth-bg-pattern" />
             <div className="auth-card">
-                {!sent ? (
-                    <>
-                        <div className="auth-logo">
-                            <img 
-                                src={logoImage} 
-                                alt="MyBillBook Logo" 
-                                style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover', marginBottom: 12 }} 
-                            />
-                            <h2 className="auth-title">Reset Password</h2>
-                            <p className="auth-sub">Enter your email to receive reset instructions</p>
-                        </div>
-                        <form className="auth-form" onSubmit={handleSubmit}>
-                            <div className="form-group">
-                                <label className="form-label">Email Address</label>
-                                <InputWithIcon icon={Mail} type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" required />
-                            </div>
-                            <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%' }}>
-                                Send Reset Link
-                            </button>
-                        </form>
-                    </>
-                ) : (
-                    <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                        <div style={{ width: 64, height: 64, background: '#dcfce7', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                            <CheckCircle size={32} color="#16a34a" />
-                        </div>
-                        <h2 className="auth-title">Email Sent!</h2>
-                        <p className="auth-sub" style={{ marginTop: 8 }}>Check your inbox for the password reset link.</p>
+                <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                    <div style={{ width: 64, height: 64, background: '#fef3c7', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                        <Lock size={32} color="#d97706" />
                     </div>
-                )}
+                    <h2 className="auth-title">Password Reset</h2>
+                    <p className="auth-sub" style={{ marginTop: 8 }}>Password reset functionality will be available soon.</p>
+                    <p style={{ color: '#6b7280', fontSize: '0.875rem', marginTop: 12, lineHeight: 1.5 }}>
+                        Please contact support if you've forgotten your password.
+                    </p>
+                </div>
                 <div style={{ textAlign: 'center', marginTop: 16 }}>
                     <button onClick={() => setAuthScreen('login')} style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 4, margin: '0 auto' }}>
                         <ArrowLeft size={14} /> Back to Login
