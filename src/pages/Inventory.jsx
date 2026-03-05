@@ -247,20 +247,20 @@ export default function Inventory() {
         }),
     [products, category, stockTab, search, sortBy]);
 
-    // Memoized stock chart data - show 8 products at a time with sliding window
-    const CHART_ITEMS = 8;
+    // Memoized stock chart data - configurable chart display limit
+    const CHART_ITEMS = 8; // Adjust based on screen size or make responsive
     const stockChartData = useMemo(() => {
         const start = Math.min(chartStartIndex, Math.max(0, products.length - CHART_ITEMS));
         return products.slice(start, start + CHART_ITEMS).map(p => ({
-            name: p.name.split(' ').slice(0, 2).join(' '),
+            name: p.name.length > 20 ? p.name.substring(0, 20) + '...' : p.name, // Dynamic truncation
             stock: p.stock,
             min: p.minStock,
         }));
     }, [products, chartStartIndex]);
 
-    // Memoized total stock value
+    // Memoized total stock value - with null/undefined safety
     const totalStockValue = useMemo(() =>
-        products.reduce((s, p) => s + (p.stock * p.purchasePrice), 0),
+        products.reduce((s, p) => s + ((p.stock || 0) * (p.purchasePrice || 0)), 0),
     [products]);
 
     return (

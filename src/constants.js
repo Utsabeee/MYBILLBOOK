@@ -36,7 +36,7 @@ export const AVATAR_COLORS = [
 ];
 
 export const DEFAULT_BUSINESS = {
-    name: 'UTSAB.CO',
+    name: 'My Business',
     taxId: '',
     taxLabel: 'VAT',
     taxRate: 13,
@@ -44,7 +44,7 @@ export const DEFAULT_BUSINESS = {
     email: '',
     address: '',
     country: '',
-    logo: null,
+    logoUrl: null,
     invoicePrefix: 'INV',
     currencyCode: 'NPR',
     dateFormat: 'DD/MM/YYYY',

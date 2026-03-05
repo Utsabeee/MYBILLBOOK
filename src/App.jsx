@@ -29,10 +29,13 @@ const BREADCRUMBS = {
 };
 
 function AppContent() {
-  const { isAuthenticated } = useApp();
+  const { isAuthenticated, loadAllData } = useApp();
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [theme, setTheme] = useState(() => localStorage.getItem('mbb_theme') || 'light');
   const [showLowStockQuickView, setShowLowStockQuickView] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
+  const [showOnlineRestored, setShowOnlineRestored] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   useEffect(() => {
     const enableDarkMode = isAuthenticated && theme === 'dark';
@@ -45,6 +48,39 @@ function AppContent() {
   }, [theme, isAuthenticated]);
 
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+
+  useEffect(() => {
+    const handleOffline = () => {
+      setIsOnline(false);
+      setShowOnlineRestored(false);
+    };
+
+    const handleOnline = () => {
+      setIsOnline(true);
+      setShowOnlineRestored(true);
+      window.setTimeout(() => setShowOnlineRestored(false), 2500);
+    };
+
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, []);
+
+  const handleRetrySync = async () => {
+    if (!isAuthenticated || !isOnline || isRetrying) return;
+    setIsRetrying(true);
+    try {
+      await loadAllData(true);
+      setShowOnlineRestored(true);
+      window.setTimeout(() => setShowOnlineRestored(false), 2500);
+    } finally {
+      setIsRetrying(false);
+    }
+  };
 
   if (!isAuthenticated) return <Auth />;
 
@@ -75,6 +111,29 @@ function AppContent() {
           onOpenLowStock={() => setShowLowStockQuickView(true)}
         />
         <main className="page-content">
+          {(!isOnline || showOnlineRestored) && (
+            <div className={`network-banner ${isOnline ? 'online' : 'offline'}`}>
+              <div className="network-banner-main">
+                <span className="network-dot" />
+                <span>
+                  {isOnline
+                    ? 'Back online. Reconnected successfully.'
+                    : 'You are offline. Reconnecting…'}
+                </span>
+              </div>
+              {isAuthenticated && (
+                <button
+                  className="network-retry-btn"
+                  onClick={handleRetrySync}
+                  disabled={!isOnline || isRetrying}
+                  title={!isOnline ? 'Connect to internet first' : 'Retry data sync now'}
+                >
+                  {isRetrying ? 'Retrying…' : 'Retry now'}
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Breadcrumb */}
           <nav className="breadcrumb" aria-label="breadcrumb">
             {crumbs.map((crumb, i) => (

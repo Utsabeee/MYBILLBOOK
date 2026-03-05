@@ -11,7 +11,7 @@ const businessSchema = z.object({
   address: z.string().optional(),
   tax_id: z.string().optional(),
   currency: z.string().length(3).optional(),
-  logo_url: z.string().url().optional(),
+  logo_url: z.string().optional(), // Changed from .url() to accept base64 data URLs
 });
 
 // =========================
@@ -49,9 +49,9 @@ router.put('/', async (req, res) => {
         phone: validatedData.phone,
         email: validatedData.email,
         address: validatedData.address,
-        tax_id: validatedData.taxId,
+        tax_id: validatedData.tax_id,
         currency: validatedData.currency,
-        logo_url: validatedData.logoUrl,
+        logo_url: validatedData.logo_url,
         updated_at: new Date().toISOString(),
       })
       .eq('id', req.user.businessId)

@@ -6,6 +6,10 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
 
+// Token refresh state management
+let isRefreshing = false;
+let refreshPromise = null;
+
 /**
  * Convert snake_case to camelCase
  * Recursively handles objects and arrays
@@ -61,44 +65,114 @@ export const apiCall = async (method, endpoint, data = null) => {
     options.body = JSON.stringify(camelToSnake(data));
   }
 
+  const parseResponse = async (response) => {
+    const contentType = response.headers.get('content-type') || '';
+    const bodyText = await response.text();
+
+    if (!bodyText) return null;
+
+    if (contentType.includes('application/json')) {
+      try {
+        return JSON.parse(bodyText);
+      } catch {
+        throw new Error(`Invalid JSON response: ${bodyText.slice(0, 120)}`);
+      }
+    }
+
+    try {
+      return JSON.parse(bodyText);
+    } catch {
+      return { error: bodyText };
+    }
+  };
+
   try {
     const response = await fetch(url, options);
 
-    // Handle 401 - Try refreshing token
-    if (response.status === 401) {
+    // Handle 401/403 - Try refreshing token
+    if (response.status === 401 || response.status === 403) {
       const refreshToken = localStorage.getItem('refreshToken');
-      if (refreshToken) {
-        const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken }),
-        });
-
-        if (refreshResponse.ok) {
-          const { accessToken } = await refreshResponse.json();
-          localStorage.setItem('accessToken', accessToken);
-
-          // Retry original request with new token
-          options.headers = getAuthHeaders();
-          return fetch(url, options).then(r => r.json()).then(data => {
-            if (!data.error) return snakeToCamel(data);
-            throw new Error(data.error || 'Request failed');
-          });
-        } else {
-          // Refresh failed - logout user
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('refreshToken');
+      if (!refreshToken) {
+        // No refresh token - redirect to login
+        localStorage.removeItem('accessToken');
+        setTimeout(() => {
+          alert('Your session has expired. Please log in again.');
           window.location.href = '/auth';
-          throw new Error('Session expired, please login again');
-        }
+        }, 100);
+        throw new Error('Session expired - redirecting to login');
       }
-      throw new Error('Unauthorized - Please login');
+
+      // Use lock mechanism to prevent parallel refresh attempts
+      if (isRefreshing) {
+        // Wait for ongoing refresh to complete
+        await refreshPromise;
+        // Retry with the new token
+        options.headers = getAuthHeaders();
+        const retryResponse = await fetch(url, options);
+        const retryData = await parseResponse(retryResponse);
+        
+        if (!retryResponse.ok) {
+          if (retryResponse.status === 401 || retryResponse.status === 403) {
+            throw new Error('Session expired - redirecting to login');
+          }
+          throw new Error(retryData?.error || `Error: ${retryResponse.status}`);
+        }
+        
+        return snakeToCamel(retryData);
+      }
+
+      // Start refresh process
+      isRefreshing = true;
+      refreshPromise = (async () => {
+        try {
+          const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken }),
+          });
+
+          if (refreshResponse.ok) {
+            const refreshData = await parseResponse(refreshResponse);
+            const accessToken = refreshData?.accessToken;
+            if (!accessToken) {
+              throw new Error('Invalid refresh response');
+            }
+            localStorage.setItem('accessToken', accessToken);
+            return true;
+          } else {
+            // Refresh failed - clear tokens and redirect
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            setTimeout(() => {
+              alert('Your session has expired. Please log in again.');
+              window.location.href = '/auth';
+            }, 100);
+            throw new Error('Session expired');
+          }
+        } finally {
+          isRefreshing = false;
+          refreshPromise = null;
+        }
+      })();
+
+      await refreshPromise;
+
+      // Retry original request with new token
+      options.headers = getAuthHeaders();
+      const retryResponse = await fetch(url, options);
+      const retryData = await parseResponse(retryResponse);
+
+      if (!retryResponse.ok) {
+        throw new Error(retryData?.error || `Error: ${retryResponse.status}`);
+      }
+
+      return snakeToCamel(retryData);
     }
 
-    const responseData = await response.json();
+    const responseData = await parseResponse(response);
 
     if (!response.ok) {
-      throw new Error(responseData.error || `Error: ${response.status}`);
+      throw new Error(responseData?.error || `Error: ${response.status}`);
     }
 
     // Convert snake_case response to camelCase
@@ -160,6 +234,7 @@ export const invoicesApi = {
 
 // Payments endpoints
 export const paymentsApi = {
+    getAll: () => apiGet('/payments'),
   getForInvoice: (invoiceId) => apiGet(`/payments/invoice/${invoiceId}`),
   create: (data) => apiPost('/payments', data),
   delete: (id) => apiDelete(`/payments/${id}`),

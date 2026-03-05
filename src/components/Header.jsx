@@ -197,8 +197,8 @@ export default function Header({ currentPage, onNavigate, theme, onToggleTheme, 
                 <div className="header-popover" ref={profileRef}>
                     <div className="profile-toggle"
                         onClick={() => { setShowProfile(!showProfile); setShowNotif(false); }}>
-                        {business?.logo ? (
-                            <img src={business.logo} alt="Profile" className="avatar" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
+                        {business?.logoUrl ? (
+                            <img src={business.logoUrl} alt="Profile" className="avatar" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
                         ) : (
                             <div className="avatar">{(business?.name || 'M').charAt(0)}</div>
                         )}
@@ -208,9 +208,9 @@ export default function Header({ currentPage, onNavigate, theme, onToggleTheme, 
                     {showProfile && (
                         <div className="notif-panel profile-panel">
                             <div className="profile-header">
-                                {business?.logo && (
+                                {business?.logoUrl && (
                                     <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
-                                        <img src={business.logo} alt="Business Logo" style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover' }} />
+                                        <img src={business.logoUrl} alt="Business Logo" style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover' }} />
                                     </div>
                                 )}
                                 <div className="profile-name">{user?.displayName || business?.name || 'Business Owner'}</div>

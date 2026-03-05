@@ -15,7 +15,7 @@ import InvoicePreviewModal from '../components/InvoicePreviewModal';
 function ContactModal({ contact, onClose, onSave, defaultType = 'customer' }) {
     const { business } = useApp();
     const [form, setForm] = useState(contact || {
-        name: '', phone: '', email: '', gst: '',
+        name: '', phone: '', email: '', taxId: '',
         address: '', type: defaultType,
     });
     const update = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -66,7 +66,7 @@ function ContactModal({ contact, onClose, onSave, defaultType = 'customer' }) {
                             </div>
                             <div className="form-group">
                                 <label className="form-label">{business.taxLabel || 'Tax ID'}</label>
-                                <input className="form-control" value={form.gst} onChange={e => update('gst', e.target.value)} placeholder="Optional Tax ID" />
+                                <input className="form-control" value={form.taxId} onChange={e => update('taxId', e.target.value)} placeholder="Optional Tax ID" />
                             </div>
                         </div>
 
@@ -122,7 +122,7 @@ function ContactDetail({ contact, onClose, invoices, payments, AVATAR_COLORS }) 
                                     <span className={`badge ${contact.type === 'customer' ? 'badge-primary' : 'badge-teal'}`}>
                                         {contact.type === 'customer' ? 'Customer' : 'Supplier'}
                                     </span>
-                                    {contact.gst && (
+                                    {contact.taxId && (
                                         <span className="contact-profile-tax">Tax Reg.</span>
                                     )}
                                 </div>
@@ -150,7 +150,7 @@ function ContactDetail({ contact, onClose, invoices, payments, AVATAR_COLORS }) 
                             { icon: Phone, label: contact.phone },
                             { icon: Mail, label: contact.email || 'No email added' },
                             { icon: MapPin, label: contact.address || 'No address added' },
-                            contact.gst && { icon: Building2, label: `${business.taxLabel || 'Tax ID'}: ${contact.gst}` },
+                            contact.taxId && { icon: Building2, label: `${business.taxLabel || 'Tax ID'}: ${contact.taxId}` },
                         ].filter(Boolean).map((item, i) => (
                             <div key={i} className="contact-profile-info-row">
                                 <item.icon size={16} className="contact-profile-info-icon" />
@@ -211,12 +211,13 @@ function ContactDetail({ contact, onClose, invoices, payments, AVATAR_COLORS }) 
 
 // ── Main Customers Page ──
 export default function Customers() {
-    const { customers, addCustomer, updateCustomer, deleteCustomer, invoices, payments, AVATAR_COLORS, currency, getCustomerBalance } = useApp();
+    const { customers, addCustomer, updateCustomer, deleteCustomer, invoices, payments, AVATAR_COLORS, currency, compactCurrency, getCustomerBalance } = useApp();
     const [tab, setTab] = useState('customer');
     const [search, setSearch] = useState('');
     const [showForm, setShowForm] = useState(false);
     const [editContact, setEditContact] = useState(null);
     const [viewContact, setViewContact] = useState(null);
+    const [showReceivableExact, setShowReceivableExact] = useState(false);
 
     // Memoized filtered list to prevent lag
     const filtered = useMemo(() => 
@@ -240,10 +241,6 @@ export default function Customers() {
         
         const total = customerBalances.reduce((sum, c) => sum + c.balance, 0);
         
-        // Log detailed breakdown for verification
-        console.log('🧾 Customer Page - Detailed Breakdown:');
-        console.table(customerBalances.filter(c => c.balance !== 0));
-        console.log('🧾 Customer Page - Total Receivable:', total);
         return total;
     }, [customers, getCustomerBalance]);
 
@@ -257,12 +254,38 @@ export default function Customers() {
                 {[
                     { label: 'Total Customers', value: customers.filter(c => c.type === 'customer').length, cls: 'blue' },
                     { label: 'Total Suppliers', value: customers.filter(c => c.type === 'supplier').length, cls: 'teal' },
-                    { label: 'Total Receivable', value: currency(totalReceivable), cls: 'orange' },
-                    { label: 'GST Registered', value: customers.filter(c => !!c.gst).length, cls: 'purple' },
+                    {
+                        label: 'Total Receivable',
+                        value: compactCurrency(totalReceivable),
+                        raw: currency(totalReceivable),
+                        cls: 'orange'
+                    },
+                    { label: 'Tax Registered', value: customers.filter(c => !!c.taxId).length, cls: 'purple' },
                 ].map(s => (
-                    <div key={s.label} className={`stat-card ${s.cls}`}>
+                    <div
+                        key={s.label}
+                        className={`stat-card ${s.cls}`}
+                        onClick={s.label === 'Total Receivable' ? () => setShowReceivableExact(prev => !prev) : undefined}
+                        style={s.label === 'Total Receivable' ? { cursor: 'pointer' } : undefined}
+                        title={s.label === 'Total Receivable'
+                            ? (showReceivableExact ? 'Showing full amount. Click to compact.' : `Click to show exact amount (${s.raw}).`)
+                            : undefined}
+                    >
                         <div className="stat-label">{s.label}</div>
                         <div className="stat-value stat-value-amount" style={{ fontSize: '1.4rem' }}>{s.value}</div>
+                        {s.label === 'Total Receivable' && showReceivableExact && (
+                            <div
+                                style={{
+                                    fontSize: '0.72rem',
+                                    color: '#6b7280',
+                                    marginTop: 4,
+                                    lineHeight: 1.3,
+                                    overflowWrap: 'anywhere',
+                                }}
+                            >
+                                Exact: {s.raw}
+                            </div>
+                        )}
                     </div>
                 ))}
             </div>
@@ -326,8 +349,8 @@ export default function Customers() {
                                                     <span className="customer-phone-pill">
                                                         <Phone size={11} /> {contact.phone}
                                                     </span>
-                                                    {contact.gst && (
-                                                        <span className="customer-tax-pill">GST</span>
+                                                    {contact.taxId && (
+                                                        <span className="customer-tax-pill">Tax Reg.</span>
                                                     )}
                                                 </div>
                                                 {contact.email && (

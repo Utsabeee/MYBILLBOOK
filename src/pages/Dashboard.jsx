@@ -2,6 +2,7 @@
 // Dashboard.jsx — Main Analytics Dashboard (Global)
 // =====================================================
 import { useApp } from '../context/AppContext';
+import { useState } from 'react';
 import {
     TrendingUp, TrendingDown, ShoppingCart, Package,
     Users, AlertTriangle, DollarSign, ArrowUpRight,
@@ -16,13 +17,13 @@ import {
 const CustomTooltip = ({ active, payload, label, currency }) => {
     if (!active || !payload.length) return null;
     return (
-        <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 14px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-            <div style={{ fontWeight: 700, marginBottom: 4, color: '#1f2937', fontSize: '0.85rem' }}>{label}</div>
+        <div className="custom-chart-tooltip">
+            <div className="tooltip-label">{label}</div>
             {payload.map((p, i) => (
-                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: '0.78rem' }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color }} />
-                    <span style={{ color: '#6b7280', textTransform: 'capitalize' }}>{p.dataKey}:</span>
-                    <span style={{ fontWeight: 600, color: '#1f2937' }}>{currency(p.value)}</span>
+                <div key={i} className="tooltip-item">
+                    <div className="tooltip-dot" style={{ background: p.color }} />
+                    <span className="tooltip-key">{p.dataKey}:</span>
+                    <span className="tooltip-value">{currency(p.value)}</span>
                 </div>
             ))}
         </div>
@@ -30,10 +31,38 @@ const CustomTooltip = ({ active, payload, label, currency }) => {
 };
 
 export default function Dashboard({ onNavigate, onOpenLowStock }) {
-    const { invoices, products, customers, lowStockProducts, pendingPayments, business, currency, user } = useApp();
+    const { invoices, products, customers, expenses, lowStockProducts, pendingPayments, business, currency, compactCurrency, user } = useApp();
+    const [showPendingExact, setShowPendingExact] = useState(false);
 
-    // Log for verification
-    console.log('📊 Dashboard - Pending Payments:', pendingPayments);
+    const toAmount = (value) => {
+        const number = Number(value);
+        return Number.isFinite(number) ? number : 0;
+    };
+
+    const toIsoDate = (value) => {
+        if (!value) return '';
+        if (typeof value === 'string') return value;
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString();
+    };
+
+    const getInvoiceDate = (invoice) => (
+        invoice?.date || invoice?.invoiceDate || invoice?.createdAt || invoice?.created_at || ''
+    );
+
+    const getInvoiceTotal = (invoice) => (
+        toAmount(
+            invoice?.total ?? invoice?.totalAmount ?? invoice?.grandTotal ?? invoice?.amount ?? invoice?.subtotal
+        )
+    );
+
+    const getExpenseDate = (expense) => (
+        expense?.date || expense?.expenseDate || expense?.createdAt || expense?.created_at || ''
+    );
+
+    const getExpenseAmount = (expense) => (
+        toAmount(expense?.amount ?? expense?.total ?? expense?.cost)
+    );
 
     // ── DATA COMPUTATION ────────────────────────────
 
@@ -46,11 +75,20 @@ export default function Dashboard({ onNavigate, onOpenLowStock }) {
             const mLabel = d.toLocaleString('default', { month: 'short' });
             const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
-            const monthInvoices = invoices.filter(inv => inv.date.startsWith(key));
-            const sales = monthInvoices.reduce((sum, inv) => sum + inv.total, 0);
-            const expenses = monthInvoices.reduce((sum, inv) => sum + (inv.subtotal * 0.6), 0); // Mock expenses as 60% of subtotal if not tracked
+            const monthInvoices = (invoices || []).filter(inv => {
+                const invDate = toIsoDate(getInvoiceDate(inv));
+                return invDate?.startsWith(key);
+            });
+            const sales = monthInvoices.reduce((sum, inv) => sum + getInvoiceTotal(inv), 0);
+            
+            // Calculate actual expenses from expenses table, not mock data
+            const monthExpenses = (expenses || []).filter(exp => {
+                const expDate = toIsoDate(getExpenseDate(exp));
+                return expDate?.startsWith(key);
+            });
+            const expensesAmount = monthExpenses.reduce((sum, exp) => sum + getExpenseAmount(exp), 0);
 
-            months.push({ month: mLabel, sales, expenses });
+            months.push({ month: mLabel, sales, expenses: expensesAmount });
         }
         return months;
     };
@@ -69,13 +107,18 @@ export default function Dashboard({ onNavigate, onOpenLowStock }) {
             d.setDate(today.getDate() - i);
             const dLabel = days[d.getDay()];
             const dStr = d.toISOString().split('T')[0];
-            const amount = invoices.filter(inv => inv.date === dStr).reduce((sum, inv) => sum + inv.total, 0);
+            const amount = (invoices || []).filter(inv => {
+                const invDate = toIsoDate(getInvoiceDate(inv)).split('T')[0];
+                return invDate === dStr;
+            }).reduce((s, inv) => s + getInvoiceTotal(inv), 0);
             data.push({ day: dLabel, amount });
         }
         return data;
     };
     const dailyData = getDailyData();
     const salesToday = dailyData[6].amount;
+    const salesYesterday = dailyData[5].amount;
+    const dailyGrowth = salesYesterday > 0 ? (((salesToday - salesYesterday) / salesYesterday) * 100).toFixed(1) : '0.0';
 
     // 3. Top Products
     const getTopProducts = () => {
@@ -91,12 +134,13 @@ export default function Dashboard({ onNavigate, onOpenLowStock }) {
         return Object.entries(productSales)
             .map(([name, stats]) => ({ name, ...stats }))
             .sort((a, b) => b.sales - a.sales)
-            .slice(0, 5);
+            .slice(0, 5); // Top 5 products
     };
     const topProducts = getTopProducts();
 
-    // 4. Category Pie
+    // 4. Category Pie - safe calculation
     const getCategoryData = () => {
+        if (products.length === 0) return [];
         const categories = {};
         products.forEach(p => {
             const cat = p.category || 'Other';
@@ -109,13 +153,23 @@ export default function Dashboard({ onNavigate, onOpenLowStock }) {
             name,
             value: Math.round((count / total) * 100),
             color: colors[i % colors.length]
-        })).sort((a, b) => b.value - a.value).slice(0, 5);
+        })).sort((a, b) => b.value - a.value).slice(0, 5); // Top 5 categories
     };
     const categoryData = getCategoryData();
 
     const paidInvoices = invoices.filter(i => i.status === 'paid').length;
     const pendingCount = invoices.filter(i => i.status !== 'paid').length;
-    const recentInvoices = [...invoices].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
+    const RECENT_LIMIT = 5; // Configurable recent invoices limit
+    const recentInvoices = [...invoices].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, RECENT_LIMIT);
+
+    // Calculate new customers this month
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const newCustomersThisMonth = customers.filter(c => {
+        if (!c.createdAt || c.type === 'supplier') return false;
+        const createdDate = new Date(c.createdAt);
+        return createdDate >= startOfMonth;
+    }).length;
 
     const statusConfig = {
         paid: { cls: 'badge-success', label: 'Paid' },
@@ -134,10 +188,13 @@ export default function Dashboard({ onNavigate, onOpenLowStock }) {
                         Welcome back, {user?.displayName || (business?.name?.split(' ')[0] || 'Friend')} 👋
                     </div>
                     <div className="dashboard-welcome-title">
-                        This Month's Revenue: {currency(totalRevMonth)}
+                        This Month's Revenue: {compactCurrency(totalRevMonth)}
                     </div>
                     <div className="dashboard-welcome-growth">
-                        📈 {revGrowth}% growth vs last month — Great work!
+                        {parseFloat(revGrowth) >= 0 
+                            ? `📈 ${revGrowth}% growth vs last month — Great work!`
+                            : `📉 ${Math.abs(revGrowth)}% decrease vs last month — Keep pushing!`
+                        }
                     </div>
                 </div>
                 <button className="btn dashboard-welcome-btn" onClick={() => onNavigate('billing')}>
@@ -151,7 +208,7 @@ export default function Dashboard({ onNavigate, onOpenLowStock }) {
                     <div className="stat-card-header">
                         <div>
                             <div className="stat-label">Monthly Revenue</div>
-                            <div className="stat-value stat-value-amount">{currency(totalRevMonth)}</div>
+                            <div className="stat-value stat-value-amount">{compactCurrency(totalRevMonth)}</div>
                         </div>
                         <div className="stat-icon blue"><DollarSign size={22} /></div>
                     </div>
@@ -165,21 +222,41 @@ export default function Dashboard({ onNavigate, onOpenLowStock }) {
                     <div className="stat-card-header">
                         <div>
                             <div className="stat-label">Sales Today</div>
-                            <div className="stat-value stat-value-amount">{currency(salesToday)}</div>
+                            <div className="stat-value stat-value-amount">{compactCurrency(salesToday)}</div>
                         </div>
                         <div className="stat-icon green"><TrendingUp size={22} /></div>
                     </div>
                     <div className="stat-foot-row">
-                        <span className="stat-change up"><ArrowUpRight size={12} /> 8.4%</span>
+                        <span className={`stat-change ${parseFloat(dailyGrowth) >= 0 ? 'up' : 'down'}`}>
+                            {parseFloat(dailyGrowth) >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />} {Math.abs(dailyGrowth)}%
+                        </span>
                         <span className="stat-foot-note">vs yesterday</span>
                     </div>
                 </div>
 
-                <div className="stat-card orange">
+                <div
+                    className="stat-card orange"
+                    onClick={() => setShowPendingExact(prev => !prev)}
+                    style={{ cursor: 'pointer' }}
+                    title={showPendingExact ? 'Showing full amount. Click to compact.' : 'Click to show full exact amount.'}
+                >
                     <div className="stat-card-header">
                         <div>
                             <div className="stat-label">Pending Payments</div>
-                            <div className="stat-value stat-value-amount">{currency(pendingPayments)}</div>
+                            <div className="stat-value stat-value-amount">{compactCurrency(pendingPayments)}</div>
+                            {showPendingExact && (
+                                <div
+                                    style={{
+                                        fontSize: '0.72rem',
+                                        color: '#6b7280',
+                                        marginTop: 4,
+                                        lineHeight: 1.3,
+                                        overflowWrap: 'anywhere',
+                                    }}
+                                >
+                                    Exact: {currency(pendingPayments)}
+                                </div>
+                            )}
                         </div>
                         <div className="stat-icon orange"><Clock size={22} /></div>
                     </div>
@@ -229,7 +306,9 @@ export default function Dashboard({ onNavigate, onOpenLowStock }) {
                         <div className="stat-icon red"><Users size={22} /></div>
                     </div>
                     <div className="stat-foot-row">
-                        <span className="stat-change up"><ArrowUpRight size={12} /> 2 new</span>
+                        <span className="stat-change up">
+                            <ArrowUpRight size={12} /> {newCustomersThisMonth} new
+                        </span>
                         <span className="stat-foot-note">this month</span>
                     </div>
                 </div>
@@ -259,7 +338,16 @@ export default function Dashboard({ onNavigate, onOpenLowStock }) {
                                 <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                                 <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false}
                                     tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-                                <Tooltip content={<CustomTooltip currency={currency} />} />
+                                <Tooltip 
+                                    content={<CustomTooltip currency={currency} />}
+                                    contentStyle={{ 
+                                        backgroundColor: 'var(--bg-card)', 
+                                        border: '1px solid var(--border-color)',
+                                        borderRadius: '10px',
+                                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                                    }}
+                                    cursor={{ fill: 'rgba(59, 130, 246, 0.1)' }}
+                                />
                                 <Area type="monotone" dataKey="sales" stroke="#3b82f6" strokeWidth={2.5} fill="url(#salesGrad)" name="Sales" />
                                 <Area type="monotone" dataKey="expenses" stroke="#ef4444" strokeWidth={2} fill="url(#expGrad)" name="Expenses" />
                             </AreaChart>
@@ -278,7 +366,16 @@ export default function Dashboard({ onNavigate, onOpenLowStock }) {
                                 <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                                 <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false}
                                     tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-                                <Tooltip content={<CustomTooltip currency={currency} />} />
+                                <Tooltip 
+                                    content={<CustomTooltip currency={currency} />}
+                                    contentStyle={{ 
+                                        backgroundColor: 'var(--bg-card)', 
+                                        border: '1px solid var(--border-color)',
+                                        borderRadius: '10px',
+                                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                                    }}
+                                    cursor={{ fill: 'rgba(59, 130, 246, 0.1)' }}
+                                />
                                 <Bar dataKey="amount" name="Sales" radius={[6, 6, 0, 0]}>
                                     {dailyData.map((_, i) => (
                                         <Cell key={i} fill={i === 6 ? '#3b82f6' : '#93c5fd'} />
@@ -366,7 +463,7 @@ export default function Dashboard({ onNavigate, onOpenLowStock }) {
                                 <button className="btn btn-ghost btn-sm dashboard-lowstock-btn" onClick={(e) => { e.stopPropagation(); onNavigate('inventory'); }}>Fix Now</button>
                             </div>
                             <div className="dashboard-lowstock-list">
-                                {lowStockProducts.slice(0, 3).map(p => (
+                                {lowStockProducts.slice(0, Math.min(3, lowStockProducts.length)).map(p => (
                                     <div key={p.id} className="dashboard-lowstock-row">
                                         <div className="dashboard-lowstock-dot" style={{ background: p.stock === 0 ? '#ef4444' : '#f59e0b' }} />
                                         <span className="dashboard-lowstock-name">{p.name}</span>
@@ -413,10 +510,10 @@ export default function Dashboard({ onNavigate, onOpenLowStock }) {
                                     <td className="amount-cell">
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                             <div style={{ flex: 1, height: 6, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden', minWidth: 80 }}>
-                                                <div style={{ height: '100%', borderRadius: 4, background: 'linear-gradient(90deg,#3b82f6,#14b8a6)', width: `${Math.round((p.sales / topProducts[0].sales) * 100)}%` }} />
+                                                <div style={{ height: '100%', borderRadius: 4, background: 'linear-gradient(90deg,#3b82f6,#14b8a6)', width: `${topProducts[0]?.sales ? Math.round((p.sales / topProducts[0].sales) * 100) : 100}%` }} />
                                             </div>
                                             <span style={{ fontSize: '0.75rem', color: '#6b7280', width: 36, textAlign: 'right' }}>
-                                                {Math.round((p.sales / topProducts[0].sales) * 100)}%
+                                                {topProducts[0]?.sales ? Math.round((p.sales / topProducts[0].sales) * 100) : 0}%
                                             </span>
                                         </div>
                                     </td>

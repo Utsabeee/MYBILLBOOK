@@ -11,9 +11,9 @@ const router = express.Router();
 const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
-  businessName: z.string().min(2),
-  ownerName: z.string().min(2),
-  businessPhone: z.string().optional(),
+  business_name: z.string().min(2),
+  owner_name: z.string().min(2),
+  business_phone: z.string().optional(),
 });
 
 const loginSchema = z.object({
@@ -26,7 +26,7 @@ const loginSchema = z.object({
 // =========================
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, businessName, ownerName, businessPhone } = registerSchema.parse(req.body);
+    const { email, password, business_name, owner_name, business_phone } = registerSchema.parse(req.body);
 
     // Check if user exists
     const { data: existingUser } = await supabaseAdmin
@@ -48,7 +48,7 @@ router.post('/register', async (req, res) => {
       .insert({
         email,
         password_hash: hashedPassword,
-        owner_name: ownerName,
+        owner_name: owner_name,
       })
       .select()
       .single();
@@ -62,8 +62,8 @@ router.post('/register', async (req, res) => {
       .from('businesses')
       .insert({
         user_id: user.id,
-        name: businessName,
-        phone: businessPhone || null,
+        name: business_name,
+        phone: business_phone || null,
         currency: 'USD',
         tax_enabled: true,
       })

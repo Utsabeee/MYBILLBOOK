@@ -34,9 +34,10 @@ const CustomTooltip = ({ active, payload, label, currency }) => {
 };
 
 export default function Reports() {
-    const { products, invoices, customers, payments, business, currency, getCustomerBalance } = useApp();
+    const { products, invoices, customers, payments, business, currency, compactCurrency, getCustomerBalance } = useApp();
     const [period, setPeriod] = useState('6m');
     const [reportType, setReportType] = useState('sales');
+    const [showOutstandingExact, setShowOutstandingExact] = useState(false);
 
     const paidByInvoiceId = useMemo(() => {
         const map = new Map();
@@ -182,33 +183,55 @@ export default function Reports() {
                 {[
                     {
                         label: `Total Sales (${currentMonth.month})`,
-                        value: currency(currentMonth.sales),
+                        value: compactCurrency(currentMonth.sales),
                         change: `${salesGrowth >= 0 ? '+' : ''}${salesGrowth}%`, up: salesGrowth >= 0, cls: 'blue',
                     },
                     {
                         label: `Net Profit (${currentMonth.month})`,
-                        value: currency(currentMonth.profit),
+                        value: compactCurrency(currentMonth.profit),
                         change: `${profitGrowth >= 0 ? '+' : ''}${profitGrowth}%`, up: profitGrowth >= 0, cls: 'green',
                     },
                     {
                         label: `Total ${business.taxLabel || 'Tax'} Collected`,
-                        value: currency(totalTax),
+                        value: compactCurrency(totalTax),
                         change: '+0.0%', up: true, cls: 'purple',
                     },
                     {
                         label: 'Outstanding Due',
-                        value: currency(outstandingDue),
+                        value: compactCurrency(outstandingDue),
+                        raw: currency(outstandingDue),
                         change: `${customerDueRows.length} customer(s)`, up: outstandingDue === 0, cls: 'orange',
                     },
                     {
                         label: 'Cumulative Profit',
-                        value: currency(totalProfit),
+                        value: compactCurrency(totalProfit),
                         change: '+28.5%', up: true, cls: 'teal',
                     },
                 ].map(s => (
-                    <div key={s.label} className={`stat-card ${s.cls}`}>
+                    <div
+                        key={s.label}
+                        className={`stat-card ${s.cls}`}
+                        onClick={s.label === 'Outstanding Due' ? () => setShowOutstandingExact(prev => !prev) : undefined}
+                        style={s.label === 'Outstanding Due' ? { cursor: 'pointer' } : undefined}
+                        title={s.label === 'Outstanding Due'
+                            ? (showOutstandingExact ? 'Showing full amount. Click to compact.' : `Click to show exact amount (${s.raw}).`)
+                            : undefined}
+                    >
                         <div className="stat-label">{s.label}</div>
                         <div className="stat-value stat-value-amount" style={{ fontSize: '1.3rem', marginTop: 4 }}>{s.value}</div>
+                        {s.label === 'Outstanding Due' && showOutstandingExact && (
+                            <div
+                                style={{
+                                    fontSize: '0.72rem',
+                                    color: '#6b7280',
+                                    marginTop: 4,
+                                    lineHeight: 1.3,
+                                    overflowWrap: 'anywhere',
+                                }}
+                            >
+                                Exact: {s.raw}
+                            </div>
+                        )}
                         <span className={`stat-change ${s.up ? 'up' : 'down'}`} style={{ width: 'fit-content', marginTop: 4 }}>
                             {s.up ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />} {s.change}
                         </span>

@@ -25,25 +25,58 @@ const PORT = process.env.PORT || 5000;
 
 // ============= MIDDLEWARE =============
 
-// Rate limiting
+// CORS - Must be FIRST before anything else (rate limiter, body parser, routes, etc)
+const corsOptions = {
+  origin: function (origin, callback) {
+    const allowedOrigins = [
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://localhost:5175',
+      'http://localhost:5176',
+      'http://localhost:5177',
+      'http://localhost:3000',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:5174',
+      'http://127.0.0.1:5175',
+      'http://127.0.0.1:5176',
+      'http://127.0.0.1:5177',
+    ];
+
+    // Allow requests with no origin (mobile apps or curl requests)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['X-Total-Count', 'X-Page', 'X-Page-Size'],
+  maxAge: 3600, // 1 hour
+  optionsSuccessStatus: 200,
+};
+
+app.use(cors(corsOptions));
+
+// Handle preflight requests
+app.options('*', cors(corsOptions));
+
+// Rate limiting (AFTER CORS)
+// In development, use very high limits; in production, use strict limits
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  max: process.env.NODE_ENV === 'production' ? 100 : 1000, // 1000 for dev, 100 for prod
   message: 'Too many requests from this IP, please try again later.',
+  skip: (req) => {
+    // Skip rate limiting for health checks and auth endpoints
+    return req.path === '/api/health' || req.path.startsWith('/api/auth');
+  },
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
 });
 
 app.use(limiter);
-
-// CORS - Must be configured BEFORE routes
-app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174'],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
-
-// Handle preflight requests explicitly
-app.options('*', cors());
 
 // Body parser
 app.use(express.json({ limit: '50mb' }));

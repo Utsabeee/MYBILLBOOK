@@ -1,7 +1,7 @@
 // =====================================================
 // Billing.jsx — Invoice Management Module (Global)
 // =====================================================
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { useApp } from '../context/AppContext';
 import {
@@ -291,13 +291,17 @@ function InvoiceFormModal({ invoice, onClose, onSave }) {
 
 // ── Main Billing Page ──
 export default function Billing() {
-    const { invoices, payments, addInvoice, updateInvoice, deleteInvoice, business, currency } = useApp();
+    const { invoices, payments, addInvoice, updateInvoice, deleteInvoice, business, currency, compactCurrency } = useApp();
     const [showForm, setShowForm] = useState(false);
     const [editInvoice, setEditInvoice] = useState(null);
     const [previewInvoice, setPreviewInvoice] = useState(null);
     const [paymentInvoice, setPaymentInvoice] = useState(null);
     const [search, setSearch] = useState('');
     const [filterStatus, setFilterStatus] = useState('all');
+    const [currentPage, setCurrentPage] = useState(1);
+    const [showPendingExact, setShowPendingExact] = useState(false);
+
+    const INVOICES_PER_PAGE = 50;
 
     const paidByInvoiceId = useMemo(() => {
         const map = new Map();
@@ -324,9 +328,26 @@ export default function Billing() {
         return matchSearch && matchStatus;
     }).sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    const totalRevenue = invoices.reduce((s, i) => s + i.total, 0);
+    const totalRevenue = invoices.reduce((s, i) => s + (i.total || 0), 0);
     const totalPaid = invoices.reduce((s, i) => s + getInvoicePaid(i), 0);
-    const totalPending = totalRevenue - totalPaid;
+    const totalPending = Math.max(0, totalRevenue - totalPaid); // Ensure non-negative
+
+    const totalPages = Math.max(1, Math.ceil(filtered.length / INVOICES_PER_PAGE));
+    const safePage = Math.min(currentPage, totalPages);
+    const startIndex = (safePage - 1) * INVOICES_PER_PAGE;
+    const paginatedInvoices = filtered.slice(startIndex, startIndex + INVOICES_PER_PAGE);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [search, filterStatus]);
+
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
+        }
+    }, [currentPage, totalPages]);
+
+    const displayAmount = (amount) => compactCurrency(amount);
 
     const handleSave = (data) => {
         if (editInvoice) updateInvoice(editInvoice.id, data);
@@ -339,14 +360,35 @@ export default function Billing() {
             {/* Summary Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 24 }}>
                 {[
-                    { label: 'Total Revenue', value: currency(totalRevenue), cls: 'blue' },
-                    { label: 'Amount Received', value: currency(totalPaid), cls: 'green' },
-                    { label: 'Pending Amount', value: currency(totalPending), cls: 'orange' },
+                    { label: 'Total Revenue', value: displayAmount(totalRevenue), cls: 'blue' },
+                    { label: 'Amount Received', value: displayAmount(totalPaid), cls: 'green' },
+                    { label: 'Pending Amount', value: displayAmount(totalPending), raw: currency(totalPending), cls: 'orange' },
                     { label: 'Total Invoices', value: invoices.length, cls: 'purple' },
                 ].map(s => (
-                    <div key={s.label} className={`stat-card ${s.cls}`}>
+                    <div
+                        key={s.label}
+                        className={`stat-card ${s.cls}`}
+                        onClick={s.label === 'Pending Amount' ? () => setShowPendingExact(prev => !prev) : undefined}
+                        style={s.label === 'Pending Amount' ? { cursor: 'pointer' } : undefined}
+                        title={s.label === 'Pending Amount'
+                            ? (showPendingExact ? 'Showing full amount. Click to compact.' : 'Click to show full exact amount.')
+                            : undefined}
+                    >
                         <div className="stat-label">{s.label}</div>
                         <div className="stat-value stat-value-amount" style={{ fontSize: '1.4rem' }}>{s.value}</div>
+                        {s.label === 'Pending Amount' && showPendingExact && (
+                            <div
+                                style={{
+                                    fontSize: '0.72rem',
+                                    color: '#6b7280',
+                                    marginTop: 4,
+                                    lineHeight: 1.3,
+                                    overflowWrap: 'anywhere',
+                                }}
+                            >
+                                Exact: {s.raw}
+                            </div>
+                        )}
                     </div>
                 ))}
             </div>
@@ -404,7 +446,7 @@ export default function Billing() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {filtered.map(inv => {
+                                {paginatedInvoices.map(inv => {
                                     const paidAmount = getInvoicePaid(inv);
                                     const resolvedStatus = getInvoiceStatus(inv);
                                     const cfg = STATUS_CFG[resolvedStatus];
@@ -418,10 +460,10 @@ export default function Billing() {
                                             <td style={{ color: '#6b7280', fontSize: '0.82rem' }}>{inv.date}</td>
                                             <td style={{ fontWeight: 600, color: '#1f2937' }}>{inv.customer || 'Unknown'}</td>
                                             <td style={{ color: '#6b7280', fontSize: '0.82rem' }}>{inv.items?.length || 0} item{inv.items?.length !== 1 ? 's' : ''}</td>
-                                            <td className="align-right billing-amount-cell">{currency(inv.total)}</td>
-                                            <td className="align-right billing-amount-cell billing-paid-cell">{currency(paidAmount)}</td>
+                                            <td className="align-right billing-amount-cell" title={currency(inv.total)}>{displayAmount(inv.total)}</td>
+                                            <td className="align-right billing-amount-cell billing-paid-cell" title={currency(paidAmount)}>{displayAmount(paidAmount)}</td>
                                             <td className={`align-right billing-amount-cell ${balance > 0 ? 'billing-due-cell' : 'billing-clear-cell'}`}>
-                                                {balance > 0 ? currency(balance) : '—'}
+                                                {balance > 0 ? <span title={currency(balance)}>{displayAmount(balance)}</span> : '—'}
                                             </td>
                                             <td><span className={`badge ${cfg.cls}`}>{cfg.label}</span></td>
                                             <td>
@@ -448,6 +490,19 @@ export default function Billing() {
                         </table>
                     )}
                 </div>
+
+                {filtered.length > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderTop: '1px solid #f1f5f9' }}>
+                        <div style={{ fontSize: '0.82rem', color: '#6b7280' }}>
+                            Showing {startIndex + 1}-{Math.min(startIndex + INVOICES_PER_PAGE, filtered.length)} of {filtered.length} invoices
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <button className="btn btn-ghost" disabled={safePage === 1} onClick={() => setCurrentPage(p => Math.max(1, p - 1))}>Prev</button>
+                            <span style={{ fontSize: '0.82rem', color: '#6b7280' }}>Page {safePage} / {totalPages}</span>
+                            <button className="btn btn-ghost" disabled={safePage === totalPages} onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}>Next</button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Modals */}

@@ -7,8 +7,45 @@ import { Bell, Trash2, Check, CheckCheck, Package, TrendingUp, AlertCircle, X } 
 import toast from 'react-hot-toast';
 
 export default function Notifications() {
-    const { notifications, markAsRead, markAllAsRead, deleteNotification, clearAllNotifications } = useApp();
+    const { notifications, markAsRead, markAllAsRead, deleteNotification, clearAllNotifications, addNotification } = useApp();
     const [filter, setFilter] = useState('all'); // all, unread, read
+
+    // Add sample notifications for demo
+    const handleAddSampleNotifications = () => {
+        const samples = [
+            {
+                type: 'error',
+                title: 'Overdue Invoice',
+                body: 'Invoice #INV-001 from ABC Corp is 5 days overdue - Total: $5,500',
+            },
+            {
+                type: 'warning',
+                title: 'Low Stock Alert',
+                body: 'iPhone 15 Pro is low in stock (3 remaining, min: 5)',
+            },
+            {
+                type: 'warning',
+                title: 'Invoice Due Soon',
+                body: 'Invoice #INV-002 from XYZ Ltd is due in 2 days - Total: $8,200',
+            },
+            {
+                type: 'info',
+                title: 'Payment Received',
+                body: 'Payment of $3,500 received for Invoice #INV-003',
+            },
+            {
+                type: 'error',
+                title: 'Out of Stock',
+                body: 'Samsung Galaxy S24 is out of stock!',
+            },
+        ];
+        
+        samples.forEach(sample => {
+            addNotification(sample);
+        });
+        
+        toast.success('5 sample notifications added!');
+    };
 
     // Group notifications by date
     const groupedNotifications = useMemo(() => {
@@ -19,9 +56,17 @@ export default function Notifications() {
         const thisWeek = new Date(today);
         thisWeek.setDate(thisWeek.getDate() - 7);
 
-        const filtered = filter === 'all' ? notifications :
-            filter === 'unread' ? notifications.filter(n => !n.read) :
-                notifications.filter(n => n.read);
+        // Always show unread in red, but filter based on tab selection
+        // 'all' = show everything | 'unread' = only unread | 'read' = only read
+        let filtered;
+        if (filter === 'unread') {
+            filtered = notifications.filter(n => !n.read);
+        } else if (filter === 'read') {
+            filtered = notifications.filter(n => n.read);
+        } else {
+            // 'all' - show everything
+            filtered = notifications;
+        }
 
         const groups = {
             today: [],
@@ -47,6 +92,11 @@ export default function Notifications() {
     }, [notifications, filter]);
 
     const unreadCount = notifications.filter(n => !n.read).length;
+    const hasFilteredNotifications = 
+        groupedNotifications.today.length +
+        groupedNotifications.yesterday.length +
+        groupedNotifications.thisWeek.length +
+        groupedNotifications.older.length > 0;
 
     const getNotificationIcon = (type) => {
         switch (type) {
@@ -227,6 +277,14 @@ export default function Notifications() {
                     </p>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
+                    <button 
+                        className="btn btn-ghost" 
+                        onClick={handleAddSampleNotifications}
+                        title="Add sample notifications to see the feature in action"
+                    >
+                        <Bell size={16} />
+                        Sample
+                    </button>
                     {unreadCount > 0 && (
                         <button className="btn btn-ghost" onClick={handleMarkAllRead}>
                             <CheckCheck size={16} />
@@ -293,6 +351,20 @@ export default function Notifications() {
                     </div>
                     <div style={{ fontSize: '0.875rem' }}>
                         You'll see updates about your business here
+                    </div>
+                </div>
+            ) : !hasFilteredNotifications ? (
+                <div style={{ 
+                    textAlign: 'center', 
+                    padding: '80px 20px',
+                    color: 'var(--text-muted)'
+                }}>
+                    <Bell size={48} style={{ marginBottom: 16, opacity: 0.3 }} />
+                    <div style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: 8 }}>
+                        No {filter} notifications
+                    </div>
+                    <div style={{ fontSize: '0.875rem' }}>
+                        Switch to another tab to see notifications
                     </div>
                 </div>
             ) : (

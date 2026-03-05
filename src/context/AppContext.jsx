@@ -29,6 +29,31 @@ export function formatCurrency(amount, currencyCode = 'USD') {
     }
 }
 
+export function formatCompactCurrency(amount, currencyCode = 'USD') {
+    const n = Number(amount) || 0;
+    const abs = Math.abs(n);
+
+    if (abs < 100000) {
+        return formatCurrency(n, currencyCode);
+    }
+
+    const cur = CURRENCIES.find(c => c.code === currencyCode) || CURRENCIES[0];
+    let divisor = 1000;
+    let suffix = 'K';
+
+    if (abs >= 1000000000) {
+        divisor = 1000000000;
+        suffix = 'B';
+    } else if (abs >= 1000000) {
+        divisor = 1000000;
+        suffix = 'M';
+    }
+
+    const compactValue = n / divisor;
+    const rounded = Number(compactValue.toFixed(1));
+    return `${cur.symbol}${rounded}${suffix}`;
+}
+
 // ── Date Format Utility ──────────────────────────────
 
 
@@ -100,16 +125,37 @@ export function AppProvider({ children }) {
     // ── Load all data from API ────────────────────────
     const loadAllData = async (silent = false) => {
         try {
+            console.log('AppContext: Starting to load all data...');
             const [business, products, customers, invoices, expenses] = await Promise.all([
                 api.businessApi.getProfile().catch(err => {
                     if (!silent) console.error('Failed to load business:', err);
                     return DEFAULT_BUSINESS;
                 }),
-                api.productsApi.getAll().catch(() => []),
-                api.customersApi.getAll().catch(() => []),
-                api.invoicesApi.getAll().catch(() => []),
-                api.expensesApi.getAll().catch(() => []),
+                api.productsApi.getAll().catch(err => {
+                    console.error('Failed to load products:', err);
+                    return [];
+                }),
+                api.customersApi.getAll().catch(err => {
+                    console.error('Failed to load customers:', err);
+                    return [];
+                }),
+                api.invoicesApi.getAll().catch(err => {
+                    console.error('Failed to load invoices:', err);
+                    return [];
+                }),
+                api.expensesApi.getAll().catch(err => {
+                    console.error('Failed to load expenses:', err);
+                    return [];
+                }),
             ]);
+
+            console.log('AppContext: Data loaded:', {
+                businessName: business?.name,
+                productsCount: products?.length,
+                customersCount: customers?.length,
+                invoicesCount: invoices?.length,
+                expensesCount: expenses?.length
+            });
 
             setBusiness(business || DEFAULT_BUSINESS);
             setProducts(products || []);
@@ -117,18 +163,31 @@ export function AppProvider({ children }) {
             setInvoices(invoices || []);
             setExpenses(expenses || []);
 
-            // Load payments for each invoice
+            // Load all payments in one batch call
             if (invoices?.length > 0) {
-                const allPayments = [];
-                for (const invoice of invoices) {
-                    try {
-                        const payments = await api.paymentsApi.getForInvoice(invoice.id);
-                        allPayments.push(...payments);
-                    } catch (err) {
-                        if (!silent) console.error(`Failed to load payments for invoice ${invoice.id}:`, err);
+                try {
+                    const allPayments = await api.paymentsApi.getAll();
+                    setPayments(allPayments || []);
+                } catch (err) {
+                    const message = String(err?.message || '');
+                    const expectedTransient =
+                        message.includes('Unauthorized') ||
+                        message.includes('Invalid or expired token') ||
+                        message.includes('Network error') ||
+                        message.includes('Failed to fetch payments');
+
+                    if (!silent && !expectedTransient) {
+                        console.error('Failed to load payments:', err);
                     }
+                    setPayments([]);
                 }
-                setPayments(allPayments);
+            } else {
+                setPayments([]);
+            }
+
+            // Generate notifications based on loaded data
+            if (!silent) {
+                generateNotifications(products || [], invoices || [], payments || []);
             }
         } catch (error) {
             if (!silent) {
@@ -433,6 +492,100 @@ export function AppProvider({ children }) {
     };
 
     // ── Notification Management ──────────────────────
+    const generateNotifications = (products, invoices, payments) => {
+        const newNotifications = [];
+        const now = new Date();
+
+        // Safety checks
+        if (!Array.isArray(products) || !Array.isArray(invoices) || !Array.isArray(payments)) {
+            return;
+        }
+
+        // 1. Low stock alerts
+        products.forEach(product => {
+            if (product.stock <= product.minStock && product.stock > 0) {
+                newNotifications.push({
+                    id: `low-stock-${product.id}`,
+                    type: 'warning',
+                    title: 'Low Stock Alert',
+                    body: `${product.name} is low in stock (${product.stock} remaining, min: ${product.minStock})`,
+                    read: false,
+                    createdAt: new Date().toISOString(),
+                });
+            } else if (product.stock === 0) {
+                newNotifications.push({
+                    id: `out-of-stock-${product.id}`,
+                    type: 'error',
+                    title: 'Out of Stock',
+                    body: `${product.name} is out of stock!`,
+                    read: false,
+                    createdAt: new Date().toISOString(),
+                });
+            }
+        });
+
+        // 2. Overdue invoices
+        invoices.forEach(invoice => {
+            if (invoice.status === 'unpaid' && invoice.dueDate) {
+                const dueDate = new Date(invoice.dueDate);
+                const daysOverdue = Math.floor((now - dueDate) / (1000 * 60 * 60 * 24));
+                
+                if (daysOverdue > 0) {
+                    const customer = invoice.customerName || 'Unknown Customer';
+                    newNotifications.push({
+                        id: `overdue-${invoice.id}`,
+                        type: 'error',
+                        title: 'Overdue Invoice',
+                        body: `Invoice #${invoice.invoiceNumber} from ${customer} is ${daysOverdue} day${daysOverdue > 1 ? 's' : ''} overdue`,
+                        read: false,
+                        createdAt: new Date().toISOString(),
+                    });
+                } else if (daysOverdue > -3) {
+                    // Due within 3 days (configurable threshold)
+                    const customer = invoice.customerName || 'Unknown Customer';
+                    const daysUntilDue = Math.abs(daysOverdue);
+                    newNotifications.push({
+                        id: `due-soon-${invoice.id}`,
+                        type: 'warning',
+                        title: 'Invoice Due Soon',
+                        body: `Invoice #${invoice.invoiceNumber} from ${customer} is due in ${daysUntilDue} day${daysUntilDue > 1 ? 's' : ''}`,
+                        read: false,
+                        createdAt: new Date().toISOString(),
+                    });
+                }
+            }
+        });
+
+        // 3. Large pending receivables (if total unpaid > threshold)
+        const totalUnpaid = invoices
+            .filter(inv => inv.status === 'unpaid' || inv.status === 'partial')
+            .reduce((sum, inv) => {
+                const paid = payments
+                    .filter(p => p.invoiceId === inv.id)
+                    .reduce((s, p) => s + (p.amount || 0), 0);
+                return sum + (inv.total - paid);
+            }, 0);
+
+        const LARGE_RECEIVABLES_THRESHOLD = 10000; // Configurable threshold
+        if (totalUnpaid > LARGE_RECEIVABLES_THRESHOLD) {
+            newNotifications.push({
+                id: 'large-receivables',
+                type: 'info',
+                title: 'Pending Receivables',
+                body: `You have ${formatCurrency(totalUnpaid)} in pending receivables`,
+                read: false,
+                createdAt: new Date().toISOString(),
+            });
+        }
+
+        // Update notifications state (avoid duplicates based on id)
+        setNotifications(prev => {
+            const existingIds = new Set(prev.map(n => n.id));
+            const uniqueNew = newNotifications.filter(n => !existingIds.has(n.id));
+            return [...uniqueNew, ...prev];
+        });
+    };
+
     const addNotification = (notificationData) => {
         const id = Date.now().toString();
         const notifObj = {
@@ -546,6 +699,7 @@ export function AppProvider({ children }) {
 
     // Currency helpers
     const currency = (amount) => formatCurrency(amount, business.currency || 'USD');
+    const compactCurrency = (amount) => formatCompactCurrency(amount, business.currency || 'USD');
     const currencySymbol = CURRENCIES.find(c => c.code === (business.currency || 'USD'))?.symbol || '$';
 
     return (
@@ -616,6 +770,7 @@ export function AppProvider({ children }) {
 
             // Utilities
             currency,
+            compactCurrency,
             currencySymbol,
             CURRENCIES,
             formatDate,

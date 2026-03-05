@@ -73,7 +73,7 @@ export default function Sidebar({ currentPage, onNavigate }) {
                     {/* Business name chip */}
                     <div className="sidebar-business-chip">
                         <img 
-                            src={business?.logo || logoImage} 
+                            src={business?.logoUrl || logoImage} 
                             alt="Business Logo" 
                             className="sidebar-business-avatar-img"
                             style={{

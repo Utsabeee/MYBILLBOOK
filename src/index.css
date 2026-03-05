@@ -318,6 +318,68 @@ a:hover {
   padding-top: calc(var(--header-h) + var(--space-6));
 }
 
+.network-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border: 1px solid transparent;
+}
+
+.network-banner-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.network-banner.offline {
+  background: var(--danger-50);
+  color: var(--danger-600);
+  border-color: color-mix(in srgb, var(--danger-500) 25%, var(--danger-50));
+}
+
+.network-banner.online {
+  background: var(--success-50);
+  color: var(--success-700);
+  border-color: color-mix(in srgb, var(--success-500) 25%, var(--success-50));
+}
+
+.network-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.network-retry-btn {
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.14);
+  color: inherit;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  line-height: 1;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.network-retry-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.network-retry-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
 /* === Sidebar === */
 .sidebar {
   position: fixed;
@@ -1663,6 +1725,46 @@ tbody td {
 
 .lowstock-empty {
   margin-top: 4px;
+}
+
+/* === Custom Chart Tooltip === */
+.custom-chart-tooltip {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px 14px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.tooltip-label {
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+
+.tooltip-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.78rem;
+}
+
+.tooltip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tooltip-key {
+  color: var(--text-secondary);
+  text-transform: capitalize;
+}
+
+.tooltip-value {
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .table-flat {
@@ -3079,6 +3181,10 @@ body.dark-mode .notif-row.unread {
   .page-content {
     padding: var(--space-4);
     padding-top: calc(var(--header-h) + var(--space-4));
+  }
+
+  .network-banner {
+    flex-wrap: wrap;
   }
 
   .page-header {

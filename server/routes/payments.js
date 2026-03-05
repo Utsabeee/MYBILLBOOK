@@ -13,6 +13,50 @@ const paymentSchema = z.object({
 });
 
 // =========================
+// GET ALL PAYMENTS (for authenticated business)
+// =========================
+router.get('/', async (req, res) => {
+  try {
+    // Get all invoices for this business
+    const { data: invoices, error: invoicesError } = await supabaseAdmin
+      .from('invoices')
+      .select('id')
+      .eq('business_id', req.user.businessId);
+
+    if (invoicesError) throw invoicesError;
+
+    if (!invoices || invoices.length === 0) {
+      return res.json([]);
+    }
+
+    const invoiceIds = invoices.map(inv => inv.id);
+
+    // Query payments in chunks to avoid oversized IN() filters for very large datasets
+    const chunkSize = 200;
+    const allPayments = [];
+
+    for (let index = 0; index < invoiceIds.length; index += chunkSize) {
+      const chunk = invoiceIds.slice(index, index + chunkSize);
+      const { data: paymentsChunk, error } = await supabaseAdmin
+        .from('payments')
+        .select('*')
+        .in('invoice_id', chunk);
+
+      if (error) throw error;
+      if (paymentsChunk?.length) {
+        allPayments.push(...paymentsChunk);
+      }
+    }
+
+    allPayments.sort((a, b) => new Date(b.date) - new Date(a.date));
+    res.json(allPayments);
+  } catch (error) {
+    console.error('Get all payments error:', error);
+    res.status(500).json({ error: 'Failed to fetch payments' });
+  }
+});
+
+// =========================
 // GET PAYMENTS FOR INVOICE
 // =========================
 router.get('/invoice/:invoiceId', async (req, res) => {

@@ -5,6 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:client": "vite",
+    "dev:server": "npm --prefix server run dev",
+    "dev:all": "concurrently -k -n FRONTEND,BACKEND -c cyan,green \"npm run dev:client\" \"npm run dev:server\"",
+    "stop": "sh -c 'for p in 5173 5174 8080; do pid=$(lsof -ti tcp:$p); if [ -n \"$pid\" ]; then kill -9 $pid; fi; done'",
+    "dev:fresh": "npm run stop && npm run dev:all",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -26,6 +31,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "concurrently": "^9.2.1",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
